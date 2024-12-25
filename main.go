@@ -249,26 +249,64 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
 }
 
 func (h *HNSW) addConnection(node, newNode *Node, level int) {
-	node.Lock()
-	defer node.Unlock()
+    node.Lock()
+    defer node.Unlock()
 
-	if len(node.Levels) <= level {
-		node.Levels = append(node.Levels, &Level{})
-	}
+    // Ensure level exists
+    for len(node.Levels) <= level {
+        node.Levels = append(node.Levels, &Level{})
+    }
 
-	maxConnections := h.M
-	if level == 0 {
-		maxConnections = h.Mmax
-	}
+    // Get max connections for this level
+    maxConnections := h.M
+    if level == 0 {
+        maxConnections = h.Mmax
+    }
 
-	node.Levels[level].Connections = append(node.Levels[level].Connections, newNode)
-	if len(node.Levels[level].Connections) > maxConnections {
-		sort.Slice(node.Levels[level].Connections, func(i, j int) bool {
-			return h.DistanceFunc(node.Vector, node.Levels[level].Connections[i].Vector) 
-				h.DistanceFunc(node.Vector, node.Levels[level].Connections[j].Vector)
-		})
-		node.Levels[level].Connections = node.Levels[level].Connections[:maxConnections]
-	}
+    // Check if connection already exists
+    for _, conn := range node.Levels[level].Connections {
+        if conn.ID == newNode.ID {
+            return // Already connected
+        }
+    }
+
+    // Calculate distances for all connections including the new one
+    type connDist struct {
+        node     *Node
+        distance float64
+    }
+    
+    conns := make([]connDist, 0, len(node.Levels[level].Connections)+1)
+    
+    // Add existing connections
+    for _, conn := range node.Levels[level].Connections {
+        dist := h.DistanceFunc(node.Vector, conn.Vector)
+        conns = append(conns, connDist{conn, dist})
+    }
+    
+    // Add new connection
+    newDist := h.DistanceFunc(node.Vector, newNode.Vector)
+    conns = append(conns, connDist{newNode, newDist})
+
+    // Sort by distance
+    sort.Slice(conns, func(i, j int) bool {
+        return conns[i].distance < conns[j].distance
+    })
+
+    // Keep only the closest connections up to maxConnections
+    node.Levels[level].Connections = make([]*Node, 0, maxConnections)
+    for i := 0; i < len(conns) && i < maxConnections; i++ {
+        node.Levels[level].Connections = append(node.Levels[level].Connections, conns[i].node)
+    }
+
+    // Optional: Keep some long-range connections for better graph navigability
+    if level > 0 && len(conns) > maxConnections {
+        // Replace one close connection with a longer-range one
+        longRangeIdx := len(conns) - 1
+        if rand.Float64() < 0.2 { // 20% chance to keep a long-range connection
+            node.Levels[level].Connections[maxConnections-1] = conns[longRangeIdx].node
+        }
+    }
 }
 
 // Distance metrics
