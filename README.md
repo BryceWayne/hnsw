@@ -33,7 +33,7 @@ The network maintains its efficiency through:
 - Hierarchical structure for efficient navigation
 
 ### EF Parameter Impact
-![EF Impact](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/mages/ef-impact.svg)
+![EF Impact](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/ef-impact.svg)
 
 The EF (Exploration Factor) parameter controls the trade-off between:
 - Search speed (lower EF)
