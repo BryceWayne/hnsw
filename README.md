@@ -7,7 +7,7 @@ A high-performance implementation of the HNSW algorithm for approximate nearest 
 HNSW (Hierarchical Navigable Small World) is an algorithm for approximate nearest neighbor search that creates a layered graph structure. Each layer is a "small world" graph, with the number of connections between nodes decreasing as you go up the layers.
 
 ### Search Process
-![HNSW Search Process](docs/images/search-process.svg)
+![HNSW Search Process](https://raw.githubusercontent.com/BryceWayne/hnsw/main/docs/images/search-process.svg)
 
 The search process starts at the top layer and descends through the hierarchy:
 1. Begin at the entry point in the highest layer
@@ -16,7 +16,7 @@ The search process starts at the top layer and descends through the hierarchy:
 4. Final search is performed in the bottom layer (Layer 0)
 
 ### Insertion Process
-![HNSW Insertion](docs/images/insertion-process.svg)
+![HNSW Insertion](https://raw.githubusercontent.com/BryceWayne/hnsw/main/docs/images/insertion-process.svg)
 
 When inserting a new node:
 1. Randomly select maximum level for the new node
@@ -25,7 +25,7 @@ When inserting a new node:
 4. Maintain connection limits (M/Mmax) through pruning
 
 ### Small World Properties
-![HNSW Growth](docs/images/growth-process.svg)
+![HNSW Growth](https://raw.githubusercontent.com/BryceWayne/hnsw/main/docs/images/growth-process.svg)
 
 The network maintains its efficiency through:
 - Balance between short and long-range connections
@@ -33,7 +33,7 @@ The network maintains its efficiency through:
 - Hierarchical structure for efficient navigation
 
 ### EF Parameter Impact
-![EF Impact](docs/mages/ef-impact.svg)
+![EF Impact](https://raw.githubusercontent.com/BryceWayne/hnsw/main/docs/mages/ef-impact.svg)
 
 The EF (Exploration Factor) parameter controls the trade-off between:
 - Search speed (lower EF)
@@ -139,7 +139,7 @@ loadedIndex, err := LoadHNSW("index.hnsw")
 
 ## Pruning Strategy
 
-![HNSW Pruning](./docs/images/pruning-process.svg)
+![HNSW Pruning](https://raw.githubusercontent.com/BryceWayne/hnsw/main/docs/images/pruning-process.svg)
 
 Pruning is crucial for maintaining the HNSW graph's efficiency and "small world" properties. The implementation uses several strategies:
 
