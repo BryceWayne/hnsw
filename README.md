@@ -1,6 +1,190 @@
 # HNSW (Hierarchical Navigable Small World) Implementation in Go
 
-A high-performance implementation of the HNSW algorithm for approximate nearest neighbor search, optimized for high-dimensional vector spaces.
+High-performance implementation of HNSW algorithm for approximate nearest neighbor search.
+
+## Installation
+
+```bash
+go get github.com/BryceWayne/hnsw
+```
+
+## Quick Start
+
+```go
+import "github.com/BryceWayne/hnsw"
+
+// Create index
+index := hnsw.New(
+    128,    // dimension
+    16,     // M (max connections per layer)
+    32,     // Mmax (max connections at layer 0)
+    100,    // efConstruction (construction-time ef)
+    hnsw.Euclidean,  // distance function
+)
+
+// Insert vectors
+index.Insert(1, vector1)
+index.Insert(2, vector2)
+
+// Search 
+results := index.Search(queryVector, 10)
+
+// Save/Load
+index.Save("index.hnsw")
+loadedIndex, _ := hnsw.Load("index.hnsw", hnsw.Euclidean)
+```
+
+## Full Example
+
+```go
+package main
+
+import (
+    "flag"
+    "fmt"
+    "math/rand"
+    "sync"
+    "time"
+    "github.com/BryceWayne/hnsw"
+)
+
+var (
+    dimension      = flag.Int("d", 128, "Vector dimension")
+    numVectors     = flag.Int("n", 1000, "Number of vectors")
+    connections    = flag.Int("m", 16, "Max connections per layer")
+    maxConnections = flag.Int("mmax", 32, "Max connections at layer 0")
+    efConstruction = flag.Int("ef", 100, "EF construction parameter")
+    searchK        = flag.Int("k", 10, "Number of nearest neighbors")
+    batchSize      = flag.Int("batch", 25, "Batch size for parallel insertions")
+)
+
+func main() {
+    flag.Parse()
+    rand.Seed(time.Now().UnixNano())
+
+    // Initialize index
+    index := hnsw.New(
+        *dimension,
+        *connections,
+        *maxConnections,
+        *efConstruction,
+        hnsw.Euclidean,
+    )
+
+    // Generate and insert vectors in batches
+    vectors := make([]hnsw.Vector, *numVectors)
+    for i := range vectors {
+        vectors[i] = generateRandomVector(*dimension)
+    }
+
+    numBatches := (*numVectors + *batchSize - 1) / *batchSize
+    for b := 0; b < numBatches; b++ {
+        start := b * *batchSize
+        end := min(start+*batchSize, *numVectors)
+        
+        var wg sync.WaitGroup
+        for i := start; i < end; i++ {
+            wg.Add(1)
+            go func(id int, vec hnsw.Vector) {
+                defer wg.Done()
+                index.Insert(id, vec)
+            }(i, vectors[i])
+        }
+        wg.Wait()
+    }
+
+    // Search
+    queryVector := generateRandomVector(*dimension)
+    results := index.Search(queryVector, *searchK)
+    fmt.Printf("Found neighbors: %v\n", results)
+}
+```
+
+Run with:
+```bash
+go run main.go -d 256 -n 10000 -m 32 -ef 100 -k 20 -batch 25
+```
+
+## API Reference
+
+### Types
+
+```go
+type Vector []float64
+type DistanceFunc func(Vector, Vector) float64
+```
+
+### Functions
+
+#### New
+```go
+func New(dim, m, mmax, efConstruction int, distanceFunc DistanceFunc) *HNSW
+```
+Creates new HNSW index:
+- `dim`: Vector dimension
+- `m`: Max connections per layer
+- `mmax`: Max connections at layer 0
+- `efConstruction`: Search quality during construction (recommend 100-200)
+- `distanceFunc`: Distance metric function (Euclidean or Cosine provided)
+
+#### Insert
+```go
+func (h *HNSW) Insert(id int, vec Vector)
+```
+Inserts vector with given ID. Thread-safe.
+
+#### Search 
+```go
+func (h *HNSW) Search(vec Vector, k int) []int
+```
+Returns IDs of k nearest neighbors. Thread-safe.
+
+#### Delete
+```go
+func (h *HNSW) Delete(id int)
+```
+Removes vector from index. Thread-safe.
+
+#### Save/Load
+```go 
+func (h *HNSW) Save(filename string) error
+func Load(filename string, distanceFunc DistanceFunc) (*HNSW, error)
+```
+Persistence functions.
+
+### Distance Functions
+
+- `Euclidean`: Standard Euclidean distance
+- `Cosine`: Cosine similarity as distance
+
+## Performance
+
+Sample benchmark (256d vectors, 10k points):
+```json
+{
+  "dimension": 256,
+  "num_vectors": 10000,
+  "connections": 32,
+  "max_connections": 32,
+  "ef_construction": 100,
+  "distance_metric": "euclidean",
+  "build_time": 556174141967,
+  "search_time": 376427279,
+  "memory_usage": 33609840
+}
+```
+
+## Project Structure
+
+```
+hnsw/
+├── examples/      # Example usage
+├── distance.go    # Distance metrics
+├── hnsw.go       # Main HNSW implementation  
+├── node.go       # Node implementation
+├── serialize.go  # Serialization logic
+└── types.go      # Core data types
+```
 
 ## Algorithm Overview
 
@@ -9,214 +193,35 @@ HNSW (Hierarchical Navigable Small World) is an algorithm for approximate neares
 ### Search Process
 ![HNSW Search Process](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/search-process.svg)
 
-The search process starts at the top layer and descends through the hierarchy:
-1. Begin at the entry point in the highest layer
-2. Explore the current layer to find the closest node to the query
-3. Descend to the next layer and repeat
-4. Final search is performed in the bottom layer (Layer 0)
+1. Begin at entry point in highest layer
+2. Explore current layer to find closest node
+3. Descend to next layer and repeat
+4. Final search in bottom layer (Layer 0)
 
 ### Insertion Process
 ![HNSW Insertion](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/insertion-process.svg)
 
-When inserting a new node:
-1. Randomly select maximum level for the new node
+1. Randomly select maximum level for new node
 2. Find nearest neighbors at each level
 3. Create bidirectional connections
-4. Maintain connection limits (M/Mmax) through pruning
+4. Maintain connection limits through pruning
 
-### Small World Properties
+### Network Properties
 ![HNSW Growth](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/growth-process.svg)
 
-The network maintains its efficiency through:
-- Balance between short and long-range connections
-- Limited connections per node (M/Mmax parameters)
-- Hierarchical structure for efficient navigation
+The network maintains efficiency through:
+- Balance of short/long-range connections
+- Limited connections per node (M/Mmax)
+- Hierarchical navigation structure
 
 ### EF Parameter Impact
 ![EF Impact](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/ef-impact.svg)
 
-The EF (Exploration Factor) parameter controls the trade-off between:
-- Search speed (lower EF)
-- Search accuracy (higher EF)
+EF (Exploration Factor) controls:
+- Lower EF: Faster search, less accurate
+- Higher EF: Slower search, more accurate
 
-## Code Structure
-
-### Core Types
-
-```go
-type Vector []float64
-
-type Node struct {
-    ID       int
-    Vector   Vector
-    Levels   []*Level
-    MaxLevel int
-    sync.RWMutex
-}
-
-type HNSW struct {
-    Nodes           map[int]*Node
-    EntryPoint      *Node
-    MaxLevel        int
-    M               int    // max connections per layer
-    Mmax            int    // max connections at layer 0
-    EfConstruction  int
-    Dim             int
-    DistanceFunc    DistanceFunc
-}
-```
-
-### Key Functions
-
-#### NewHNSW
-```go
-func NewHNSW(dim, m, mmax, efConstruction int, distanceFunc DistanceFunc) *HNSW
-```
-Creates a new HNSW index with specified parameters:
-- `dim`: Vector dimension
-- `m`: Maximum connections per node (except ground layer)
-- `mmax`: Maximum connections in ground layer
-- `efConstruction`: Search quality during construction
-- `distanceFunc`: Distance metric function
-
-#### Insert
-```go
-func (h *HNSW) Insert(id int, vec Vector)
-```
-Inserts a new vector into the index:
-1. Randomly assigns a maximum level
-2. Finds insertion points through layer traversal
-3. Creates connections at each level
-4. Maintains connection limits through pruning
-
-#### Search
-```go
-func (h *HNSW) Search(vec Vector, k int) []int
-```
-Finds k nearest neighbors for a query vector:
-1. Traverses from top layer to bottom
-2. Uses EF parameter to control search breadth
-3. Returns IDs of k closest vectors
-
-#### Delete
-```go
-func (h *HNSW) Delete(id int)
-```
-Marks a vector as deleted and updates entry point if needed.
-
-#### Save/Load
-```go
-func (h *HNSW) Save(filename string) error
-func LoadHNSW(filename string) (*HNSW, error)
-```
-Persistence functions for saving/loading the index.
-
-## Usage
-
-```go
-// Create a new HNSW index
-index := NewHNSW(
-    128,    // dimension
-    16,     // M (max connections per layer)
-    32,     // Mmax (max connections at layer 0)
-    200,    // efConstruction
-    CosineDistance,  // distance function
-)
-
-// Insert vectors
-index.Insert(1, vector1)
-index.Insert(2, vector2)
-
-// Search for nearest neighbors
-results := index.Search(queryVector, 10)
-
-// Save index to file
-index.Save("index.hnsw")
-
-// Load index from file
-loadedIndex, err := LoadHNSW("index.hnsw")
-```
-
-## Pruning Strategy
-
-![HNSW Pruning](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/pruning-process.svg)
-
-Pruning is crucial for maintaining the HNSW graph's efficiency and "small world" properties. The implementation uses several strategies:
-
-### Connection Pruning
-
-1. **Maximum Connections**:
-   - Each node has a maximum number of connections (M)
-   - Ground layer (L0) has higher limit (Mmax)
-   - When exceeded, prune to keep best connections
-
-2. **Distance-Based Selection**:
-   ```go
-   maxConnections := h.M
-   if level == 0 {
-       maxConnections = h.Mmax
-   }
-   ```
-
-3. **Pruning Process**:
-   - Sort connections by distance
-   - Keep closest neighbors up to M/Mmax
-   - Maintain bidirectional links
-   ```go
-   // Sort by distance
-   sort.Slice(conns, func(i, j int) bool {
-       return conns[i].distance < conns[j].distance
-   })
-   ```
-
-### Optimization Strategies
-
-1. **Connection Deduplication**:
-   - Prevent duplicate connections
-   - Check before adding new links
-   ```go
-   for _, conn := range node.Levels[level].Connections {
-       if conn.ID == newNode.ID {
-           return // Already connected
-       }
-   }
-   ```
-
-2. **Long-range Connections**:
-   - Occasionally keep some longer-range connections
-   - Improves graph navigability
-   - Prevents local clustering
-   ```go
-   if level > 0 && rand.Float64() < 0.2 {
-       // Keep one long-range connection
-   }
-   ```
-
-3. **Layer-Specific Treatment**:
-   - Ground layer (L0) keeps more connections
-   - Higher layers maintain sparser connections
-   - Balances search speed and accuracy
-
-### Impact on Performance
-
-1. **Search Efficiency**:
-   - Fewer connections to traverse
-   - Better quality neighbors
-   - Faster convergence
-
-2. **Memory Usage**:
-   - Controlled growth
-   - Efficient storage
-   - Predictable scaling
-
-3. **Build Time**:
-   - One-time cost during insertion
-   - Maintains index quality
-   - Prevents degradation over time
-
-## Parameter Tuning
-
-### Essential Parameters
+### Parameter Tuning
 
 1. **M/Mmax** (Connection Limits):
    - `M`: 12-16 for high-dimensional data
@@ -225,7 +230,7 @@ Pruning is crucial for maintaining the HNSW graph's efficiency and "small world"
 2. **EF** (Search Quality):
    - Lower values (64): Faster, less accurate
    - Higher values (128+): Slower, more accurate
-   - Construction: 200+ recommended
+   - Construction: 100-200 recommended
 
 3. **Distance Metrics**:
    - Cosine: Best for text/embedding vectors
@@ -234,8 +239,9 @@ Pruning is crucial for maintaining the HNSW graph's efficiency and "small world"
 ### Performance Tips
 
 1. **Index Construction**:
-   - Higher `efConstruction` for better quality
-   - Batch insertions for better throughput
+   - Use batch insertions (25-50 vectors per batch)
+   - Pre-generate vectors before insertion
+   - Lower `efConstruction` (100) for faster builds
 
 2. **Search Optimization**:
    - Adjust EF based on accuracy needs
@@ -247,4 +253,6 @@ Pruning is crucial for maintaining the HNSW graph's efficiency and "small world"
 
 ## License
 
-[Add your license information here]
+MIT License
+
+Copyright (c) 2024 Bryce Wayne
