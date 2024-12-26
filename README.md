@@ -236,6 +236,31 @@ EF (Exploration Factor) controls:
    - Cosine: Best for text/embedding vectors
    - Euclidean: Better for coordinate-based data
 
+## Testing
+
+Run the test suite:
+```bash
+go test -v ./...
+```
+
+Run benchmarks:
+```bash
+go test -bench=. ./...
+```
+
+Current benchmark results (Intel i9-12900K):
+```
+BenchmarkInsert-24    8224    208014 ns/op  # ~208µs per insert
+BenchmarkSearch-24    7557    150143 ns/op  # ~150µs per search
+```
+
+Test coverage includes:
+- Distance functions (Euclidean, Cosine)
+- Core operations (Insert, Search, Delete)
+- Concurrent operations
+- Serialization
+- Performance benchmarks
+
 ### Performance Tips
 
 1. **Index Construction**:

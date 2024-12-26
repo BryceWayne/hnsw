@@ -60,7 +60,6 @@ func (h *HNSW) Insert(id int, vec Vector) {
     h.mutex.Lock()
     defer h.mutex.Unlock()
 
-    // Create new node with initial level
     newNode := &Node{
         ID:     id,
         Vector: vec,
@@ -68,7 +67,6 @@ func (h *HNSW) Insert(id int, vec Vector) {
     }
     newNode.Levels[0] = &Level{Connections: make([]*Node, 0)}
 
-    // First node handling
     if len(h.Nodes) == 0 {
         h.EntryPoint = newNode
         h.Nodes[id] = newNode
@@ -144,7 +142,12 @@ func (h *HNSW) Search(vec Vector, k int) []int {
     }
 
     currentNode := h.EntryPoint
-    for level := min(h.MaxLevel, len(currentNode.Levels)-1); level > 0; level-- {
+    if currentNode == nil {
+        return []int{}
+    }
+
+    // Search through layers
+    for level := h.MaxLevel; level > 0; level-- {
         changed := true
         for changed {
             changed = false
@@ -165,20 +168,31 @@ func (h *HNSW) Search(vec Vector, k int) []int {
         }
     }
 
+    // Get candidates from bottom layer
     candidates := h.searchLayer(currentNode, vec, h.EfConstruction, 0)
-    sort.Slice(candidates, func(i, j int) bool {
-        return h.DistanceFunc(candidates[i].Vector, vec) < h.DistanceFunc(candidates[j].Vector, vec)
-    })
 
-    if len(candidates) > k {
-        candidates = candidates[:k]
-    }
-
-    result := make([]int, 0, len(candidates))
+    // Filter deleted nodes and sort by distance
+    validCandidates := make([]*Node, 0, len(candidates))
     for _, node := range candidates {
         if !h.deletedNodes[node.ID] {
-            result = append(result, node.ID)
+            validCandidates = append(validCandidates, node)
         }
+    }
+
+    if len(validCandidates) == 0 {
+        return []int{}
+    }
+
+    // Sort remaining candidates
+    sort.Slice(validCandidates, func(i, j int) bool {
+        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
+    })
+
+    // Return k closest
+    count := min(k, len(validCandidates))
+    result := make([]int, count)
+    for i := 0; i < count; i++ {
+        result[i] = validCandidates[i].ID
     }
 
     return result
