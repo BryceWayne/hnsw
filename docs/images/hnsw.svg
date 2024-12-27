@@ -19,84 +19,119 @@
   </defs>
 
   <!-- Title -->
-  <text x="400" y="40" text-anchor="middle" font-family="Inter, Arial" font-size="24" fill="#94A3B8">
+  <text x="400" y="40" text-anchor="middle" font-family="Inter, Arial" font-size="24" fill="#E2E8F0" font-weight="bold">
     HNSW Structure Overview
   </text>
 
-  <!-- Layer backgrounds -->
+  <!-- Layer backgrounds with hover effects -->
   <g>
-    <rect x="100" y="100" width="600" height="80" fill="url(#layerGradient)" rx="5"/>
-    <rect x="100" y="200" width="600" height="80" fill="url(#layerGradient)" rx="5"/>
-    <rect x="100" y="300" width="600" height="80" fill="url(#layerGradient)" rx="5"/>
-    <rect x="100" y="400" width="600" height="80" fill="url(#layerGradient)" rx="5"/>
+    <rect x="150" y="80" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
+    <rect x="150" y="170" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
+    <rect x="150" y="260" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
+    <rect x="150" y="350" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
   </g>
 
-  <!-- Layer labels -->
-  <g font-family="Inter, Arial" font-size="14" fill="#94A3B8">
-    <text x="50" y="140">L3</text>
-    <text x="50" y="240">L2</text>
-    <text x="50" y="340">L1</text>
-    <text x="50" y="440">L0</text>
+  <!-- Layer labels and descriptions -->
+  <g font-family="Inter, Arial" fill="#94A3B8">
+    <g>
+      <text x="80" y="120" font-size="16" font-weight="bold" fill="#E2E8F0">L3</text>
+      <text x="700" y="120" font-size="14">Skip List Layer</text>
+    </g>
+    <g>
+      <text x="80" y="210" font-size="16" font-weight="bold" fill="#E2E8F0">L2</text>
+      <text x="700" y="210" font-size="14">Fast Navigation</text>
+    </g>
+    <g>
+      <text x="80" y="300" font-size="16" font-weight="bold" fill="#E2E8F0">L1</text>
+      <text x="700" y="300" font-size="14">Refined Search</text>
+    </g>
+    <g>
+      <text x="80" y="390" font-size="16" font-weight="bold" fill="#E2E8F0">L0</text>
+      <text x="700" y="390" font-size="14">Ground Layer</text>
+    </g>
   </g>
 
-  <!-- Connections -->
-  <g stroke="#94A3B8" stroke-width="1" stroke-opacity="0.3">
+  <!-- Connections with animated opacity -->
+  <g stroke="#475569" stroke-width="1">
     <!-- L3 to L2 -->
-    <path d="M400,140 L300,240"/>
-    <path d="M400,140 L500,240"/>
+    <path d="M400,115 L350,205">
+      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M400,115 L450,205">
+      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="3s" repeatCount="indefinite"/>
+    </path>
     
     <!-- L2 to L1 -->
-    <path d="M300,240 L200,340"/>
-    <path d="M300,240 L400,340"/>
-    <path d="M500,240 L400,340"/>
-    <path d="M500,240 L600,340"/>
+    <path d="M350,205 L300,295">
+      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M350,205 L400,295">
+      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M450,205 L400,295">
+      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M450,205 L500,295">
+      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
+    </path>
     
     <!-- L1 to L0 -->
-    <path d="M200,340 L150,440"/>
-    <path d="M200,340 L250,440"/>
-    <path d="M400,340 L350,440"/>
-    <path d="M400,340 L450,440"/>
-    <path d="M600,340 L550,440"/>
-    <path d="M600,340 L650,440"/>
+    <path d="M300,295 L250,385">
+      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M300,295 L350,385">
+      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M400,295 L350,385">
+      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M400,295 L450,385">
+      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M500,295 L450,385">
+      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
+    <path d="M500,295 L550,385">
+      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
+    </path>
   </g>
 
-  <!-- Nodes -->
+  <!-- Nodes with hover effects -->
   <g>
     <!-- L3 -->
-    <circle cx="400" cy="140" r="12" fill="url(#activeNodeGradient)"/>
+    <circle cx="400" cy="115" r="12" fill="url(#activeNodeGradient)">
+      <animate attributeName="r" values="12;13;12" dur="3s" repeatCount="indefinite"/>
+    </circle>
     
     <!-- L2 -->
-    <circle cx="300" cy="240" r="10" fill="url(#nodeGradient)"/>
-    <circle cx="500" cy="240" r="10" fill="url(#nodeGradient)"/>
+    <circle cx="350" cy="205" r="10" fill="url(#nodeGradient)"/>
+    <circle cx="450" cy="205" r="10" fill="url(#nodeGradient)"/>
     
     <!-- L1 -->
-    <circle cx="200" cy="340" r="8" fill="url(#nodeGradient)"/>
-    <circle cx="400" cy="340" r="8" fill="url(#nodeGradient)"/>
-    <circle cx="600" cy="340" r="8" fill="url(#nodeGradient)"/>
+    <circle cx="300" cy="295" r="8" fill="url(#nodeGradient)"/>
+    <circle cx="400" cy="295" r="8" fill="url(#nodeGradient)"/>
+    <circle cx="500" cy="295" r="8" fill="url(#nodeGradient)"/>
     
     <!-- L0 -->
-    <circle cx="150" cy="440" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="250" cy="440" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="350" cy="440" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="450" cy="440" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="550" cy="440" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="650" cy="440" r="6" fill="url(#nodeGradient)"/>
+    <circle cx="250" cy="385" r="6" fill="url(#nodeGradient)"/>
+    <circle cx="350" cy="385" r="6" fill="url(#nodeGradient)"/>
+    <circle cx="450" cy="385" r="6" fill="url(#nodeGradient)"/>
+    <circle cx="550" cy="385" r="6" fill="url(#nodeGradient)"/>
   </g>
 
-  <!-- Layer Properties -->
-  <g transform="translate(720, 120)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <text y="20">Skip List</text>
-    <text y="120">Fastest Search</text>
-    <text y="220">Balanced</text>
-    <text y="320">Most Connections</text>
+  <!-- Layer characteristics -->
+  <g transform="translate(150, 440)" font-family="Inter, Arial" font-size="12" fill="#64748B">
+    <text x="0" y="0">• Fewer connections</text>
+    <text x="200" y="0">• Balanced distribution</text>
+    <text x="400" y="0">• Most connections</text>
   </g>
 
   <!-- Legend -->
-  <g transform="translate(100, 30)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <circle cx="10" cy="10" r="6" fill="url(#nodeGradient)"/>
-    <text x="25" y="14">Regular Node</text>
+  <g transform="translate(150, 20)" font-family="Inter, Arial" font-size="14" fill="#94A3B8">
+    <circle cx="10" cy="0" r="6" fill="url(#nodeGradient)"/>
+    <text x="25" y="5">Regular Node</text>
     
-    <circle cx="120" cy="10" r="6" fill="url(#activeNodeGradient)"/>
-    <text x="135" y="14">Entry Point</text>
+    <circle cx="150" cy="0" r="6" fill="url(#activeNodeGradient)"/>
+    <text x="165" y="5">Entry Point</text>
   </g>
 </svg>
