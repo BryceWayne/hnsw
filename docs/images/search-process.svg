@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
   <!-- Background -->
-  <rect width="800" height="400" fill="#0F172A"/>
+  <rect width="800" height="500" fill="#0F172A"/>
   
   <!-- Gradient definitions -->
   <defs>
@@ -12,78 +12,110 @@
       <stop offset="0%" style="stop-color:#60A5FA"/>
       <stop offset="100%" style="stop-color:#3B82F6"/>
     </linearGradient>
+    <linearGradient id="visitedNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#34D399"/>
+      <stop offset="100%" style="stop-color:#059669"/>
+    </linearGradient>
+    <linearGradient id="targetNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F87171"/>
+      <stop offset="100%" style="stop-color:#DC2626"/>
+    </linearGradient>
     <linearGradient id="beamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:0.2"/>
       <stop offset="100%" style="stop-color:#60A5FA;stop-opacity:0"/>
     </linearGradient>
   </defs>
 
-  <!-- Layers -->
-  <g id="layers" stroke="#1E293B" stroke-width="1">
-    <line x1="50" y1="100" x2="750" y2="100"/>
-    <line x1="50" y1="200" x2="750" y2="200"/>
-    <line x1="50" y1="300" x2="750" y2="300"/>
+  <!-- Step Labels -->
+  <g font-family="Inter, Arial" font-size="14" fill="#94A3B8" text-anchor="end">
+    <text x="90" y="120">Step 1:</text>
+    <text x="90" y="220">Step 2:</text>
+    <text x="90" y="320">Step 3:</text>
+    <text x="90" y="420">Step 4:</text>
   </g>
 
   <!-- Layer Labels -->
-  <g font-family="Inter, Arial" font-size="14" fill="#94A3B8">
-    <text x="20" y="105">L2</text>
-    <text x="20" y="205">L1</text>
-    <text x="20" y="305">L0</text>
+  <g font-family="Inter, Arial" font-size="12" fill="#64748B">
+    <text x="120" y="90">Layer 3</text>
+    <text x="120" y="190">Layer 2</text>
+    <text x="120" y="290">Layer 1</text>
+    <text x="120" y="390">Layer 0</text>
   </g>
 
-  <!-- Search Beams -->
+  <!-- Search Process Animation -->
   <g>
-    <!-- ef=1 -->
-    <path d="M400,100 L375,200 L350,300" fill="none" stroke="#60A5FA" stroke-width="2" stroke-opacity="0.3"/>
-    
-    <!-- ef=2 -->
-    <path d="M375,200 Q400,250 425,200" fill="url(#beamGradient)" stroke="none"/>
-    <path d="M350,300 Q400,350 450,300" fill="url(#beamGradient)" stroke="none"/>
-    
-    <!-- ef=3 -->
-    <path d="M375,200 Q400,270 475,200" fill="url(#beamGradient)" stroke="none" opacity="0.7"/>
-    <path d="M350,300 Q400,370 500,300" fill="url(#beamGradient)" stroke="none" opacity="0.7"/>
+    <!-- Entry Point Search -->
+    <g transform="translate(150,50)">
+      <circle cx="300" cy="40" r="12" fill="url(#activeNodeGradient)">
+        <animate attributeName="r" values="12;14;12" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      <text x="320" y="30" font-family="Inter, Arial" font-size="12" fill="#94A3B8">Entry Point</text>
+      
+      <!-- Search beam -->
+      <path d="M300,40 Q350,60 400,40" fill="url(#beamGradient)">
+        <animate attributeName="opacity" values="0;0.3;0" dur="2s" repeatCount="indefinite"/>
+      </path>
+    </g>
+
+    <!-- Layer Navigation -->
+    <g transform="translate(150,150)">
+      <circle cx="300" cy="40" r="10" fill="url(#visitedNodeGradient)"/>
+      <circle cx="400" cy="40" r="10" fill="url(#activeNodeGradient)">
+        <animate attributeName="r" values="10;12;10" dur="2s" repeatCount="indefinite"/>
+      </circle>
+      
+      <!-- Search path -->
+      <path d="M300,40 L400,40" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5">
+        <animate attributeName="stroke-dashoffset" values="10;0" dur="1s" repeatCount="indefinite"/>
+      </path>
+    </g>
+
+    <!-- Ground Layer Search -->
+    <g transform="translate(150,250)">
+      <circle cx="250" cy="40" r="8" fill="url(#visitedNodeGradient)"/>
+      <circle cx="350" cy="40" r="8" fill="url(#activeNodeGradient)"/>
+      <circle cx="450" cy="40" r="8" fill="url(#nodeGradient)"/>
+      
+      <!-- Search beam -->
+      <path d="M350,40 Q400,60 450,40" fill="url(#beamGradient)" opacity="0.3"/>
+    </g>
+
+    <!-- Final Result -->
+    <g transform="translate(150,350)">
+      <circle cx="300" cy="40" r="6" fill="url(#visitedNodeGradient)"/>
+      <circle cx="350" cy="40" r="6" fill="url(#visitedNodeGradient)"/>
+      <circle cx="400" cy="40" r="6" fill="url(#targetNodeGradient)">
+        <animate attributeName="r" values="6;8;6" dur="1s" repeatCount="indefinite"/>
+      </circle>
+      
+      <!-- Result indicator -->
+      <path d="M400,25 L400,15" stroke="#DC2626" stroke-width="2">
+        <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite"/>
+      </path>
+      <text x="400" y="10" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#DC2626">Found!</text>
+    </g>
   </g>
 
-  <!-- Nodes -->
-  <g id="nodes">
-    <!-- L2 nodes -->
-    <circle cx="400" cy="100" r="12" fill="url(#activeNodeGradient)">
-      <animate attributeName="r" values="12;14;12" dur="2s" repeatCount="indefinite"/>
-    </circle>
-    
-    <!-- L1 nodes -->
-    <circle cx="375" cy="200" r="12" fill="url(#activeNodeGradient)"/>
-    <circle cx="425" cy="200" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="475" cy="200" r="12" fill="url(#nodeGradient)"/>
-    
-    <!-- L0 nodes -->
-    <circle cx="350" cy="300" r="12" fill="url(#activeNodeGradient)"/>
-    <circle cx="400" cy="300" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="450" cy="300" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="500" cy="300" r="12" fill="url(#nodeGradient)"/>
-  </g>
-
-  <!-- EF Labels -->
-  <g font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <text x="550" y="220">ef = 1</text>
-    <text x="550" y="240">ef = 2</text>
-    <text x="550" y="260">ef = 3</text>
-    <path d="M530,217 L545,217" stroke="#60A5FA" stroke-width="2" stroke-opacity="0.3"/>
-    <path d="M530,237 L545,237" stroke="#60A5FA" stroke-width="2"/>
-    <path d="M530,257 L545,257" stroke="#60A5FA" stroke-width="2" stroke-opacity="0.7"/>
+  <!-- Step Descriptions -->
+  <g transform="translate(600,50)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
+    <text y="70">Enter at top layer</text>
+    <text y="170">Navigate through layers</text>
+    <text y="270">Search ground layer</text>
+    <text y="370">Return nearest neighbor</text>
   </g>
 
   <!-- Legend -->
-  <g transform="translate(650, 30)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <circle cx="10" cy="10" r="6" fill="url(#activeNodeGradient)"/>
-    <text x="25" y="14">Active Node</text>
+  <g transform="translate(600,420)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
+    <circle cx="10" cy="0" r="6" fill="url(#activeNodeGradient)"/>
+    <text x="25" y="4">Current Node</text>
     
-    <circle cx="10" cy="30" r="6" fill="url(#nodeGradient)"/>
-    <text x="25" y="34">Candidate Node</text>
+    <circle cx="10" cy="20" r="6" fill="url(#visitedNodeGradient)"/>
+    <text x="25" y="24">Visited Node</text>
     
-    <path d="M0,50 L20,50" stroke="#60A5FA" stroke-width="2"/>
-    <text x="25" y="54">Search Beam</text>
+    <circle cx="10" cy="40" r="6" fill="url(#targetNodeGradient)"/>
+    <text x="25" y="44">Target Node</text>
+    
+    <path d="M0,60 L20,60" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5"/>
+    <text x="25" y="64">Search Path</text>
   </g>
 </svg>
