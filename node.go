@@ -1,3 +1,4 @@
+// node.go
 package hnsw
 
 import "sync"

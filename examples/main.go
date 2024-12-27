@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BryceWayne/hnsw"
+	"golang.org/x/sys/cpu"
 )
 
 var (
@@ -23,6 +24,8 @@ var (
 	useEuclidean   = flag.Bool("euclidean", true, "Use Euclidean distance (false for Cosine)")
 	outputFile     = flag.String("o", "hnsw_index.gob", "Output file for saved index")
 	batchSize      = flag.Int("batch", 25, "Batch size for parallel insertions")
+	useParallel    = flag.Bool("parallel", true, "Use parallel search")
+	workerCount    = flag.Int("workers", runtime.GOMAXPROCS(0), "Number of worker threads")
 )
 
 type BenchmarkResult struct {
@@ -54,6 +57,11 @@ func getMemoryUsage() uint64 {
 
 func main() {
 	flag.Parse()
+
+	if cpu.X86.HasAVX2 {
+		fmt.Println("Using AVX2")
+	}
+
 	rand.Seed(time.Now().UnixNano())
 
 	distanceFunc := hnsw.Euclidean
@@ -101,8 +109,12 @@ func main() {
 	buildTime := time.Since(startBuild)
 
 	queryVector := generateRandomVector(*dimension)
+	config := hnsw.SearchConfig{
+		UseParallel: *useParallel,
+		WorkerCount: *workerCount,
+	}
 	startSearch := time.Now()
-	results := index.Search(queryVector, *searchK)
+	results := index.SearchWithConfig(queryVector, *searchK, config)
 	searchTime := time.Since(startSearch)
 
 	result := BenchmarkResult{

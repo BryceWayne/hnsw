@@ -1,2 +1,3 @@
 docs/latex/*
 !docs/latex/*.tex
+examples/example

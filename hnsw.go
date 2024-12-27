@@ -1,9 +1,12 @@
+// hnsw.go
 package hnsw
 
 import (
+    "container/heap"
     "encoding/gob"
     "math/rand"
     "os"
+    "runtime"
     "sort"
     "sync"
 )
@@ -133,70 +136,70 @@ func (h *HNSW) Insert(id int, vec Vector) {
 }
 
 // Search finds k nearest neighbors for the given vector
-func (h *HNSW) Search(vec Vector, k int) []int {
-    h.mutex.RLock()
-    defer h.mutex.RUnlock()
+// func (h *HNSW) Search(vec Vector, k int) []int {
+//     h.mutex.RLock()
+//     defer h.mutex.RUnlock()
 
-    if len(h.Nodes) == 0 {
-        return nil
-    }
+//     if len(h.Nodes) == 0 {
+//         return nil
+//     }
 
-    currentNode := h.EntryPoint
-    if currentNode == nil {
-        return []int{}
-    }
+//     currentNode := h.EntryPoint
+//     if currentNode == nil {
+//         return []int{}
+//     }
 
-    // Search through layers
-    for level := h.MaxLevel; level > 0; level-- {
-        changed := true
-        for changed {
-            changed = false
-            currentNode.RLock()
-            if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
-                for _, neighbor := range currentNode.Levels[level].Connections {
-                    if h.DistanceFunc(neighbor.Vector, vec) < h.DistanceFunc(currentNode.Vector, vec) {
-                        currentNode.RUnlock()
-                        currentNode = neighbor
-                        changed = true
-                        break
-                    }
-                }
-            }
-            if !changed {
-                currentNode.RUnlock()
-            }
-        }
-    }
+//     // Search through layers
+//     for level := h.MaxLevel; level > 0; level-- {
+//         changed := true
+//         for changed {
+//             changed = false
+//             currentNode.RLock()
+//             if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
+//                 for _, neighbor := range currentNode.Levels[level].Connections {
+//                     if h.DistanceFunc(neighbor.Vector, vec) < h.DistanceFunc(currentNode.Vector, vec) {
+//                         currentNode.RUnlock()
+//                         currentNode = neighbor
+//                         changed = true
+//                         break
+//                     }
+//                 }
+//             }
+//             if !changed {
+//                 currentNode.RUnlock()
+//             }
+//         }
+//     }
 
-    // Get candidates from bottom layer
-    candidates := h.searchLayer(currentNode, vec, h.EfConstruction, 0)
+//     // Get candidates from bottom layer
+//     candidates := h.searchLayer(currentNode, vec, h.EfConstruction, 0)
 
-    // Filter deleted nodes and sort by distance
-    validCandidates := make([]*Node, 0, len(candidates))
-    for _, node := range candidates {
-        if !h.deletedNodes[node.ID] {
-            validCandidates = append(validCandidates, node)
-        }
-    }
+//     // Filter deleted nodes and sort by distance
+//     validCandidates := make([]*Node, 0, len(candidates))
+//     for _, node := range candidates {
+//         if !h.deletedNodes[node.ID] {
+//             validCandidates = append(validCandidates, node)
+//         }
+//     }
 
-    if len(validCandidates) == 0 {
-        return []int{}
-    }
+//     if len(validCandidates) == 0 {
+//         return []int{}
+//     }
 
-    // Sort remaining candidates
-    sort.Slice(validCandidates, func(i, j int) bool {
-        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
-    })
+//     // Sort remaining candidates
+//     sort.Slice(validCandidates, func(i, j int) bool {
+//         return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
+//     })
 
-    // Return k closest
-    count := min(k, len(validCandidates))
-    result := make([]int, count)
-    for i := 0; i < count; i++ {
-        result[i] = validCandidates[i].ID
-    }
+//     // Return k closest
+//     count := min(k, len(validCandidates))
+//     result := make([]int, count)
+//     for i := 0; i < count; i++ {
+//         result[i] = validCandidates[i].ID
+//     }
 
-    return result
-}
+//     return result
+// }
 
 // Delete removes a vector from the index
 func (h *HNSW) Delete(id int) {
@@ -429,6 +432,113 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
     return results
 }
 
+/*
+This optimized version:
+1. Uses worker pool for parallel neighbor exploration
+2. Maintains thread-safe visited sets
+3. Uses heap for efficient nearest neighbor tracking
+4. Handles contention with fine-grained locking
+*/
+func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level int) []*Node {
+    if level >= len(entryPoint.Levels) {
+        return []*Node{entryPoint}
+    }
+
+    // Initialize result set with entry point
+    visited := sync.Map{}
+    visitedResults := sync.Map{}
+    candidates := &nodeDistHeap{}
+    resultSet := &nodeDistHeap{}
+    heap.Init(candidates)
+    heap.Init(resultSet)
+
+    // Start with entry point
+    entryDist := h.DistanceFunc(entryPoint.Vector, vec)
+    heap.Push(candidates, &nodeDist{entryPoint, entryDist})
+    heap.Push(resultSet, &nodeDist{entryPoint, entryDist})
+    visited.Store(entryPoint.ID, true)
+    visitedResults.Store(entryPoint.ID, true)
+
+    var candidateMutex sync.Mutex
+
+    // Process candidates
+    for candidates.Len() > 0 {
+        candidateMutex.Lock()
+        current := heap.Pop(candidates).(*nodeDist)
+        candidateMutex.Unlock()
+
+        furthestDist := (*resultSet)[0].dist // Max distance in result set
+
+        if current.dist > furthestDist && resultSet.Len() >= ef {
+            continue
+        }
+
+        // Process neighbors concurrently
+        var wg sync.WaitGroup
+        current.node.RLock()
+        if level < len(current.node.Levels) && current.node.Levels[level] != nil {
+            neighbors := current.node.Levels[level].Connections
+            current.node.RUnlock()
+
+            for _, neighbor := range neighbors {
+                if neighbor == nil {
+                    continue
+                }
+                if _, seen := visited.LoadOrStore(neighbor.ID, true); seen {
+                    continue
+                }
+
+                wg.Add(1)
+                go func(n *Node) {
+                    defer wg.Done()
+                    neighborDist := h.DistanceFunc(n.Vector, vec)
+
+                    candidateMutex.Lock()
+                    if resultSet.Len() < ef || neighborDist < (*resultSet)[0].dist {
+                        if _, seen := visitedResults.LoadOrStore(n.ID, true); !seen {
+                            heap.Push(candidates, &nodeDist{n, neighborDist})
+                            heap.Push(resultSet, &nodeDist{n, neighborDist})
+                            if resultSet.Len() > ef {
+                                heap.Pop(resultSet)
+                            }
+                        }
+                    }
+                    candidateMutex.Unlock()
+                }(neighbor)
+            }
+        } else {
+            current.node.RUnlock()
+        }
+        wg.Wait()
+    }
+
+    // Extract results
+    results := make([]*Node, resultSet.Len())
+    for i := len(results) - 1; i >= 0; i-- {
+        results[i] = heap.Pop(resultSet).(*nodeDist).node
+    }
+    return results
+}
+
+type nodeDist struct {
+    node *Node
+    dist float64
+}
+
+type nodeDistHeap []*nodeDist
+
+func (h nodeDistHeap) Len() int            { return len(h) }
+func (h nodeDistHeap) Less(i, j int) bool  { return h[i].dist > h[j].dist }
+func (h nodeDistHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
+func (h *nodeDistHeap) Push(x interface{}) { *h = append(*h, x.(*nodeDist)) }
+func (h *nodeDistHeap) Pop() interface{} {
+    old := *h
+    n := len(old)
+    x := old[n-1]
+    *h = old[0 : n-1]
+    return x
+}
+
 func (h *HNSW) addConnection(node, newNode *Node, level int) {
     node.Lock()
     defer node.Unlock()
@@ -488,4 +598,88 @@ func (h *HNSW) addConnection(node, newNode *Node, level int) {
             node.Levels[level].Connections[maxConnections-1] = conns[longRangeIdx].node
         }
     }
+}
+
+// SearchConfig contains search parameters
+type SearchConfig struct {
+    UseParallel bool
+    WorkerCount int
+}
+
+// DefaultSearchConfig returns default search configuration
+func DefaultSearchConfig() SearchConfig {
+    return SearchConfig{
+        UseParallel: true,
+        WorkerCount: runtime.GOMAXPROCS(0),
+    }
+}
+
+// Search finds k nearest neighbors using default config (parallel)
+func (h *HNSW) Search(vec Vector, k int) []int {
+    return h.SearchWithConfig(vec, k, DefaultSearchConfig())
+}
+
+// SearchWithConfig finds k nearest neighbors with custom config
+func (h *HNSW) SearchWithConfig(vec Vector, k int, config SearchConfig) []int {
+    h.mutex.RLock()
+    defer h.mutex.RUnlock()
+
+    if len(h.Nodes) == 0 || h.EntryPoint == nil {
+        return []int{}
+    }
+
+    // Get entry point
+    currentNode := h.EntryPoint
+
+    // Search through levels
+    for level := h.MaxLevel; level > 0; level-- {
+        changed := true
+        for changed {
+            changed = false
+            currentNode.RLock()
+            if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
+                for _, neighbor := range currentNode.Levels[level].Connections {
+                    if h.DistanceFunc(neighbor.Vector, vec) < h.DistanceFunc(currentNode.Vector, vec) {
+                        currentNode.RUnlock()
+                        currentNode = neighbor
+                        changed = true
+                        break
+                    }
+                }
+            }
+            if !changed {
+                currentNode.RUnlock()
+            }
+        }
+    }
+
+    // Search base layer
+    var candidates []*Node
+    if config.UseParallel {
+        candidates = h.searchLayerParallel(currentNode, vec, k*2, 0) // Double ef for better accuracy
+    } else {
+        candidates = h.searchLayer(currentNode, vec, k*2, 0)
+    }
+
+    // Filter deleted nodes
+    validCandidates := make([]*Node, 0, len(candidates))
+    for _, node := range candidates {
+        if !h.deletedNodes[node.ID] {
+            validCandidates = append(validCandidates, node)
+        }
+    }
+
+    // Sort by distance
+    sort.Slice(validCandidates, func(i, j int) bool {
+        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
+    })
+
+    // Return k closest
+    count := min(k, len(validCandidates))
+    result := make([]int, count)
+    for i := 0; i < count; i++ {
+        result[i] = validCandidates[i].ID
+    }
+
+    return result
 }

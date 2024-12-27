@@ -1,3 +1,4 @@
+// types.go
 package hnsw
 
 // Vector represents a point in multi-dimensional space

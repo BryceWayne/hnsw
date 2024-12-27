@@ -1,3 +1,4 @@
+// distance_test.go
 package hnsw
 
 import (
