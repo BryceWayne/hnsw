@@ -8,103 +8,114 @@
       <stop offset="0%" style="stop-color:#475569"/>
       <stop offset="100%" style="stop-color:#334155"/>
     </linearGradient>
-    <linearGradient id="batchNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+    <linearGradient id="batchGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#34D399"/>
       <stop offset="100%" style="stop-color:#059669"/>
     </linearGradient>
-    <linearGradient id="searchBeamGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#60A5FA"/>
-      <stop offset="100%" style="stop-color:#3B82F6"/>
+    <linearGradient id="workerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#A855F7"/>
+      <stop offset="100%" style="stop-color:#6B21A8"/>
     </linearGradient>
   </defs>
 
-  <!-- Layers -->
-  <g id="layers" stroke="#1E293B" stroke-width="1">
-    <line x1="50" y1="100" x2="750" y2="100"/>
-    <line x1="50" y1="200" x2="750" y2="200"/>
-    <line x1="50" y1="300" x2="750" y2="300"/>
+  <!-- Worker Threads -->
+  <g id="workers" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
+    <!-- Worker 1 -->
+    <rect x="50" y="50" width="120" height="60" fill="url(#workerGradient)" rx="5">
+      <animate attributeName="opacity" values="1;0.7;1" dur="2s" repeatCount="indefinite"/>
+    </rect>
+    <text x="110" y="85" text-anchor="middle">Worker 1</text>
+
+    <!-- Worker 2 -->
+    <rect x="50" y="120" width="120" height="60" fill="url(#workerGradient)" rx="5">
+      <animate attributeName="opacity" values="1;0.7;1" dur="2s" repeatCount="indefinite" begin="0.5s"/>
+    </rect>
+    <text x="110" y="155" text-anchor="middle">Worker 2</text>
+
+    <!-- Worker 3 -->
+    <rect x="50" y="190" width="120" height="60" fill="url(#workerGradient)" rx="5">
+      <animate attributeName="opacity" values="1;0.7;1" dur="2s" repeatCount="indefinite" begin="1s"/>
+    </rect>
+    <text x="110" y="225" text-anchor="middle">Worker 3</text>
   </g>
 
-  <!-- Layer Labels -->
-  <g font-family="Inter, Arial" font-size="14" fill="#94A3B8">
-    <text x="20" y="105">L2</text>
-    <text x="20" y="205">L1</text>
-    <text x="20" y="305">L0</text>
+  <!-- Batch Processing -->
+  <g id="batches">
+    <!-- Batch 1 -->
+    <g transform="translate(200, 80)">
+      <rect width="150" height="30" fill="url(#batchGradient)" rx="3"/>
+      <text x="75" y="20" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="white">Batch 1 (25 vectors)</text>
+    </g>
+
+    <!-- Batch 2 -->
+    <g transform="translate(200, 150)">
+      <rect width="150" height="30" fill="url(#batchGradient)" rx="3"/>
+      <text x="75" y="20" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="white">Batch 2 (25 vectors)</text>
+    </g>
+
+    <!-- Batch 3 -->
+    <g transform="translate(200, 220)">
+      <rect width="150" height="30" fill="url(#batchGradient)" rx="3"/>
+      <text x="75" y="20" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="white">Batch 3 (25 vectors)</text>
+    </g>
   </g>
 
-  <!-- Batch Insertion Group 1 -->
-  <g>
+  <!-- HNSW Structure -->
+  <g transform="translate(450, 50)">
+    <!-- Nodes -->
+    <g id="nodes">
+      <circle cx="150" cy="50" r="8" fill="url(#nodeGradient)"/>
+      <circle cx="100" cy="100" r="8" fill="url(#nodeGradient)"/>
+      <circle cx="200" cy="100" r="8" fill="url(#nodeGradient)"/>
+      <circle cx="50" cy="150" r="8" fill="url(#nodeGradient)"/>
+      <circle cx="150" cy="150" r="8" fill="url(#nodeGradient)"/>
+      <circle cx="250" cy="150" r="8" fill="url(#nodeGradient)"/>
+      
+      <!-- New batch nodes with animation -->
+      <circle cx="75" cy="200" r="8" fill="url(#batchGradient)">
+        <animate attributeName="r" values="0;8" dur="0.5s" begin="1s" fill="freeze"/>
+      </circle>
+      <circle cx="175" cy="200" r="8" fill="url(#batchGradient)">
+        <animate attributeName="r" values="0;8" dur="0.5s" begin="1.5s" fill="freeze"/>
+      </circle>
+      <circle cx="225" cy="200" r="8" fill="url(#batchGradient)">
+        <animate attributeName="r" values="0;8" dur="0.5s" begin="2s" fill="freeze"/>
+      </circle>
+    </g>
+
+    <!-- Connections -->
+    <g stroke="#94A3B8" stroke-width="1" stroke-opacity="0.3">
+      <path d="M150,50 L100,100"/>
+      <path d="M150,50 L200,100"/>
+      <path d="M100,100 L50,150"/>
+      <path d="M100,100 L150,150"/>
+      <path d="M200,100 L150,150"/>
+      <path d="M200,100 L250,150"/>
+    </g>
+
     <!-- New connections -->
-    <g stroke="#34D399" stroke-width="2">
-      <path d="M200,100 L150,200">
-        <animate attributeName="stroke-dasharray" values="0,1000;200,0" dur="0.5s" begin="0s" fill="freeze"/>
+    <g stroke="#34D399" stroke-width="1">
+      <path d="M50,150 L75,200">
+        <animate attributeName="opacity" values="0;1" dur="0.5s" begin="1s" fill="freeze"/>
       </path>
-      <path d="M150,200 L100,300">
-        <animate attributeName="stroke-dasharray" values="0,1000;200,0" dur="0.5s" begin="0.2s" fill="freeze"/>
+      <path d="M150,150 L175,200">
+        <animate attributeName="opacity" values="0;1" dur="0.5s" begin="1.5s" fill="freeze"/>
       </path>
-    </g>
-
-    <!-- New nodes -->
-    <circle cx="150" cy="200" r="12" fill="url(#batchNodeGradient)">
-      <animate attributeName="r" values="0;12" dur="0.5s" begin="0s" fill="freeze"/>
-    </circle>
-    <circle cx="100" cy="300" r="12" fill="url(#batchNodeGradient)">
-      <animate attributeName="r" values="0;12" dur="0.5s" begin="0.2s" fill="freeze"/>
-    </circle>
-  </g>
-
-  <!-- Batch Insertion Group 2 -->
-  <g>
-    <g stroke="#34D399" stroke-width="2">
-      <path d="M400,100 L450,200">
-        <animate attributeName="stroke-dasharray" values="0,1000;200,0" dur="0.5s" begin="0.4s" fill="freeze"/>
-      </path>
-      <path d="M450,200 L500,300">
-        <animate attributeName="stroke-dasharray" values="0,1000;200,0" dur="0.5s" begin="0.6s" fill="freeze"/>
+      <path d="M250,150 L225,200">
+        <animate attributeName="opacity" values="0;1" dur="0.5s" begin="2s" fill="freeze"/>
       </path>
     </g>
-
-    <circle cx="450" cy="200" r="12" fill="url(#batchNodeGradient)">
-      <animate attributeName="r" values="0;12" dur="0.5s" begin="0.4s" fill="freeze"/>
-    </circle>
-    <circle cx="500" cy="300" r="12" fill="url(#batchNodeGradient)">
-      <animate attributeName="r" values="0;12" dur="0.5s" begin="0.6s" fill="freeze"/>
-    </circle>
-  </g>
-
-  <!-- Parallel Search Beams -->
-  <g>
-    <!-- Search beam 1 -->
-    <path d="M600,100 Q550,200 500,300" fill="none" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5">
-      <animate attributeName="stroke-dashoffset" values="10;0" dur="1s" repeatCount="indefinite"/>
-    </path>
-    
-    <!-- Search beam 2 -->
-    <path d="M200,100 Q250,200 300,300" fill="none" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5">
-      <animate attributeName="stroke-dashoffset" values="10;0" dur="1s" repeatCount="indefinite" begin="0.5s"/>
-    </path>
-  </g>
-
-  <!-- Existing Nodes -->
-  <g>
-    <circle cx="200" cy="100" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="400" cy="100" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="600" cy="100" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="300" cy="200" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="600" cy="200" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="300" cy="300" r="12" fill="url(#nodeGradient)"/>
-    <circle cx="700" cy="300" r="12" fill="url(#nodeGradient)"/>
   </g>
 
   <!-- Legend -->
-  <g transform="translate(650, 30)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <circle cx="10" cy="10" r="6" fill="url(#nodeGradient)"/>
-    <text x="25" y="14">Existing Node</text>
+  <g transform="translate(50, 300)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
+    <rect x="0" y="0" width="20" height="20" fill="url(#workerGradient)" rx="3"/>
+    <text x="30" y="15">Worker Thread</text>
     
-    <circle cx="10" cy="30" r="6" fill="url(#batchNodeGradient)"/>
-    <text x="25" y="34">Batch Insert Node</text>
+    <rect x="150" y="0" width="20" height="20" fill="url(#batchGradient)" rx="3"/>
+    <text x="180" y="15">Batch (25 vectors)</text>
     
-    <path d="M0,50 L20,50" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5"/>
-    <text x="25" y="54">Parallel Search</text>
+    <circle cx="300" cy="10" r="6" fill="url(#nodeGradient)"/>
+    <text x="315" y="15">Existing Node</text>
   </g>
 </svg>

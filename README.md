@@ -258,6 +258,20 @@ hnsw/
 
 HNSW (Hierarchical Navigable Small World) is an algorithm for approximate nearest neighbor search that creates a layered graph structure. Each layer is a "small world" graph, with the number of connections between nodes decreasing as you go up the layers.
 
+### HNSW Structure
+![HNSW Overview](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/hnsw.svg)
+
+The hierarchical structure consists of layers:
+- L0 (ground layer): Most connections, finest-grained search
+- L1-L2: Balanced layers for navigation
+- L3+: Skip-list layers for fast traversal
+
+Key properties:
+- Entry point at top layer
+- Increasing connectivity at lower layers
+- Skip-list organization for efficient search
+- Layer count scales logarithmically with data size
+
 ### Search Process
 ![HNSW Search Process](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/search-process.svg)
 
@@ -274,6 +288,22 @@ HNSW (Hierarchical Navigable Small World) is an algorithm for approximate neares
 3. Create bidirectional connections
 4. Maintain connection limits through pruning
 
+### Deletion Process
+![HNSW Deletion](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/deletion-process.svg)
+
+The deletion process involves:
+1. Locate target node and connections
+2. Remove incoming connections from neighbors 
+3. Reconnect affected neighbors to maintain graph connectivity
+4. Update layer structures as needed
+5. Thread-safe concurrent deletions
+
+Key aspects:
+- Maintains graph connectivity after node removal
+- Updates neighbor connections optimally
+- Handles edge cases (entry point deletion)
+- M/Mmax limits preserved
+
 ### Network Properties
 ![HNSW Growth](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/growth-process.svg)
 
@@ -288,6 +318,21 @@ The network maintains efficiency through:
 EF (Exploration Factor) controls:
 - Lower EF: Faster search, less accurate
 - Higher EF: Slower search, more accurate
+
+### Batch Operations
+![Batch Operations](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/batch-operations.svg)
+
+The index supports efficient batch operations:
+1. Data is split into configurable batch sizes (default 25 vectors)
+2. Worker threads process batches in parallel 
+3. Each worker handles node insertion and connection formation
+4. Concurrent operations maintain thread safety
+5. Progress tracking for large batches
+
+Recommended batch sizes:
+- Small datasets (<10K): 25-50 vectors
+- Large datasets: 100-200 vectors
+- Memory constrained: Reduce to 10-25
 
 ### Parameter Tuning
 
