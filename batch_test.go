@@ -3,6 +3,8 @@
 package hnsw
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
 	"testing"
 )
@@ -48,6 +50,33 @@ func TestBatchOperations(t *testing.T) {
 	}
 }
 
+func TestBatchEuclideanAVX2Correctness(t *testing.T) {
+	dim := 1024
+	size := 100
+
+	query := make(Vector, dim)
+	vectors := make([]Vector, size)
+	for i := range vectors {
+		vectors[i] = make(Vector, dim)
+		for j := range vectors[i] {
+			vectors[i][j] = rand.Float64()
+		}
+	}
+	for i := range query {
+		query[i] = rand.Float64()
+	}
+
+	avx2Results := BatchEuclidean(query, vectors)
+	fallbackResults := batchEuclideanFallback(query, vectors)
+
+	for i := range avx2Results {
+		if math.Abs(avx2Results[i]-fallbackResults[i]) > 1e-10 {
+			t.Errorf("Results differ at index %d: AVX2=%v, Fallback=%v",
+				i, avx2Results[i], fallbackResults[i])
+		}
+	}
+}
+
 func BenchmarkBatchOperations(b *testing.B) {
 	dim := 128
 
@@ -81,4 +110,32 @@ func BenchmarkBatchOperations(b *testing.B) {
 		b.ResetTimer()
 		h.BatchSearch(queries, 10, config)
 	})
+}
+
+func BenchmarkBatchEuclidean(b *testing.B) {
+	dims := []int{128, 256, 512, 1024}
+	sizes := []int{100, 1000, 10000}
+
+	for _, dim := range dims {
+		for _, size := range sizes {
+			b.Run(fmt.Sprintf("dim=%d_size=%d", dim, size), func(b *testing.B) {
+				query := make(Vector, dim)
+				vectors := make([]Vector, size)
+				for i := range vectors {
+					vectors[i] = make(Vector, dim)
+					for j := range vectors[i] {
+						vectors[i][j] = rand.Float64()
+					}
+				}
+				for i := range query {
+					query[i] = rand.Float64()
+				}
+
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					BatchEuclidean(query, vectors)
+				}
+			})
+		}
+	}
 }

@@ -1,137 +1,268 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
-  <!-- Background -->
-  <rect width="800" height="500" fill="#0F172A"/>
-  
-  <!-- Gradient definitions -->
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 800 500">
+  <!-- Generator: Adobe Illustrator 29.1.0, SVG Export Plug-In . SVG Version: 2.1.0 Build 142)  -->
   <defs>
-    <linearGradient id="nodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#475569"/>
-      <stop offset="100%" style="stop-color:#334155"/>
+    <style>
+      .st0 {
+        fill: url(#linear-gradient9);
+      }
+
+      .st1 {
+        fill: url(#linear-gradient6);
+      }
+
+      .st2 {
+        fill: url(#linear-gradient8);
+      }
+
+      .st3 {
+        fill: url(#linear-gradient7);
+      }
+
+      .st4 {
+        fill: url(#linear-gradient5);
+      }
+
+      .st5 {
+        fill: url(#linear-gradient4);
+      }
+
+      .st6 {
+        fill: url(#linear-gradient13);
+      }
+
+      .st7 {
+        fill: url(#linear-gradient12);
+      }
+
+      .st8 {
+        fill: url(#linear-gradient15);
+      }
+
+      .st9 {
+        fill: url(#linear-gradient11);
+      }
+
+      .st10 {
+        fill: url(#linear-gradient10);
+      }
+
+      .st11 {
+        fill: url(#linear-gradient14);
+      }
+
+      .st12 {
+        fill: #0f172a;
+      }
+
+      .st13 {
+        fill: #94a3b8;
+        font-size: 14px;
+      }
+
+      .st13, .st14, .st15, .st16, .st17, .st18, .st19, .st20 {
+        isolation: isolate;
+      }
+
+      .st13, .st16 {
+        font-family: ArialMT, Arial;
+      }
+
+      .st21 {
+        stroke: #475569;
+      }
+
+      .st14 {
+        font-size: 16px;
+      }
+
+      .st14, .st15 {
+        fill: #e2e8f0;
+        font-family: Arial-BoldMT, Arial;
+        font-weight: 700;
+      }
+
+      .st15 {
+        font-size: 24px;
+      }
+
+      .st16 {
+        fill: #64748b;
+        font-size: 12px;
+      }
+
+      .st17 {
+        fill: url(#linear-gradient);
+      }
+
+      .st17, .st18, .st19, .st20 {
+        opacity: .8;
+      }
+
+      .st18 {
+        fill: url(#linear-gradient3);
+      }
+
+      .st19 {
+        fill: url(#linear-gradient1);
+      }
+
+      .st20 {
+        fill: url(#linear-gradient2);
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45225) scale(500 -70)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
     </linearGradient>
-    <linearGradient id="activeNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#60A5FA"/>
-      <stop offset="100%" style="stop-color:#3B82F6"/>
+    <linearGradient id="linear-gradient1" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45315) scale(500 -70)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
     </linearGradient>
-    <linearGradient id="layerGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#1E293B"/>
-      <stop offset="100%" style="stop-color:#0F172A"/>
+    <linearGradient id="linear-gradient2" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45405) scale(500 -70)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient3" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45495) scale(500 -70)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient4" x1="88.5" y1="639.8" x2="89.5" y2="638.8" gradientTransform="translate(-1774 15486) scale(24 -24)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient5" x1="87.4" y1="638.4" x2="88.4" y2="637.4" gradientTransform="translate(-1446 12990) scale(20 -20)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient6" x1="87.4" y1="638.4" x2="88.4" y2="637.4" gradientTransform="translate(-1346 12990) scale(20 -20)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient7" x1="85.8" y1="636.2" x2="86.7" y2="635.2" gradientTransform="translate(-1118 10494) scale(16 -16)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient8" x1="85.7" y1="636.2" x2="86.7" y2="635.2" gradientTransform="translate(-1018 10494) scale(16 -16)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient9" x1="85.7" y1="636.2" x2="86.7" y2="635.2" gradientTransform="translate(-918 10494) scale(16 -16)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient10" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-790 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient11" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-690 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient12" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-590 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient13" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-490 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient14" x1="127.6" y1="633.5" x2="128.6" y2="632.5" gradientTransform="translate(-880 7633) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient15" x1="116" y1="631" x2="117" y2="630" gradientTransform="translate(-740 7633) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#3b82f6"/>
     </linearGradient>
   </defs>
-
-  <!-- Title -->
-  <text x="400" y="40" text-anchor="middle" font-family="Inter, Arial" font-size="24" fill="#E2E8F0" font-weight="bold">
-    HNSW Structure Overview
-  </text>
-
-  <!-- Layer backgrounds with hover effects -->
+  <rect class="st12" width="800" height="500"/>
+  <text class="st15" transform="translate(202.5 52)"><tspan x="0" y="0">HNSW Structure Overview</tspan></text>
   <g>
-    <rect x="150" y="80" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
-    <rect x="150" y="170" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
-    <rect x="150" y="260" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
-    <rect x="150" y="350" width="500" height="70" fill="url(#layerGradient)" rx="8" opacity="0.8"/>
+    <rect class="st17" x="112" y="108" width="500" height="70" rx="8" ry="8"/>
+    <rect class="st19" x="112" y="198" width="500" height="70" rx="8" ry="8"/>
+    <rect class="st20" x="112" y="288" width="500" height="70" rx="8" ry="8"/>
+    <rect class="st18" x="112" y="378" width="500" height="70" rx="8" ry="8"/>
   </g>
-
-  <!-- Layer labels and descriptions -->
-  <g font-family="Inter, Arial" fill="#94A3B8">
-    <g>
-      <text x="80" y="120" font-size="16" font-weight="bold" fill="#E2E8F0">L3</text>
-      <text x="700" y="120" font-size="14">Skip List Layer</text>
-    </g>
-    <g>
-      <text x="80" y="210" font-size="16" font-weight="bold" fill="#E2E8F0">L2</text>
-      <text x="700" y="210" font-size="14">Fast Navigation</text>
-    </g>
-    <g>
-      <text x="80" y="300" font-size="16" font-weight="bold" fill="#E2E8F0">L1</text>
-      <text x="700" y="300" font-size="14">Refined Search</text>
-    </g>
-    <g>
-      <text x="80" y="390" font-size="16" font-weight="bold" fill="#E2E8F0">L0</text>
-      <text x="700" y="390" font-size="14">Ground Layer</text>
-    </g>
-  </g>
-
-  <!-- Connections with animated opacity -->
-  <g stroke="#475569" stroke-width="1">
-    <!-- L3 to L2 -->
-    <path d="M400,115 L350,205">
-      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M400,115 L450,205">
-      <animate attributeName="opacity" values="0.2;0.4;0.2" dur="3s" repeatCount="indefinite"/>
-    </path>
-    
-    <!-- L2 to L1 -->
-    <path d="M350,205 L300,295">
-      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M350,205 L400,295">
-      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M450,205 L400,295">
-      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M450,205 L500,295">
-      <animate attributeName="opacity" values="0.3;0.5;0.3" dur="3s" repeatCount="indefinite"/>
-    </path>
-    
-    <!-- L1 to L0 -->
-    <path d="M300,295 L250,385">
-      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M300,295 L350,385">
-      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M400,295 L350,385">
-      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M400,295 L450,385">
-      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M500,295 L450,385">
-      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
-    </path>
-    <path d="M500,295 L550,385">
-      <animate attributeName="opacity" values="0.4;0.6;0.4" dur="3s" repeatCount="indefinite"/>
-    </path>
-  </g>
-
-  <!-- Nodes with hover effects -->
   <g>
-    <!-- L3 -->
-    <circle cx="400" cy="115" r="12" fill="url(#activeNodeGradient)">
-      <animate attributeName="r" values="12;13;12" dur="3s" repeatCount="indefinite"/>
+    <g>
+      <text class="st14" transform="translate(42 148)"><tspan x="0" y="0">L3</tspan></text>
+      <text class="st13" transform="translate(662 148)"><tspan x="0" y="0">Skip List Layer</tspan></text>
+    </g>
+    <g>
+      <text class="st14" transform="translate(42 238)"><tspan x="0" y="0">L2</tspan></text>
+      <text class="st13" transform="translate(662 238)"><tspan x="0" y="0">Fast Navigation</tspan></text>
+    </g>
+    <g>
+      <text class="st14" transform="translate(42 328)"><tspan x="0" y="0">L1</tspan></text>
+      <text class="st13" transform="translate(662 328)"><tspan x="0" y="0">Refined Search</tspan></text>
+    </g>
+    <g>
+      <text class="st14" transform="translate(42 418)"><tspan x="0" y="0">L0</tspan></text>
+      <text class="st13" transform="translate(662 418)"><tspan x="0" y="0">Ground Layer</tspan></text>
+    </g>
+  </g>
+  <g>
+    <path class="st21" d="M362,143l-50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.2;0.4;0.2"/>
+    </path>
+    <path class="st21" d="M362,143l50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.2;0.4;0.2"/>
+    </path>
+    <path class="st21" d="M312,233l-50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
+    </path>
+    <path class="st21" d="M312,233l50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
+    </path>
+    <path class="st21" d="M412,233l-50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
+    </path>
+    <path class="st21" d="M412,233l50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
+    </path>
+    <path class="st21" d="M262,323l-50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
+    </path>
+    <path class="st21" d="M262,323l50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
+    </path>
+    <path class="st21" d="M362,323l-50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
+    </path>
+    <path class="st21" d="M362,323l50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
+    </path>
+    <path class="st21" d="M462,323l-50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
+    </path>
+    <path class="st21" d="M462,323l50,90">
+      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
+    </path>
+  </g>
+  <g>
+    <circle class="st5" cx="362" cy="143" r="12">
+      <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="12;13;12"/>
     </circle>
-    
-    <!-- L2 -->
-    <circle cx="350" cy="205" r="10" fill="url(#nodeGradient)"/>
-    <circle cx="450" cy="205" r="10" fill="url(#nodeGradient)"/>
-    
-    <!-- L1 -->
-    <circle cx="300" cy="295" r="8" fill="url(#nodeGradient)"/>
-    <circle cx="400" cy="295" r="8" fill="url(#nodeGradient)"/>
-    <circle cx="500" cy="295" r="8" fill="url(#nodeGradient)"/>
-    
-    <!-- L0 -->
-    <circle cx="250" cy="385" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="350" cy="385" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="450" cy="385" r="6" fill="url(#nodeGradient)"/>
-    <circle cx="550" cy="385" r="6" fill="url(#nodeGradient)"/>
+    <circle class="st4" cx="312" cy="233" r="10"/>
+    <circle class="st1" cx="412" cy="233" r="10"/>
+    <circle class="st3" cx="262" cy="323" r="8"/>
+    <circle class="st2" cx="362" cy="323" r="8"/>
+    <circle class="st0" cx="462" cy="323" r="8"/>
+    <circle class="st10" cx="212" cy="413" r="6"/>
+    <circle class="st9" cx="312" cy="413" r="6"/>
+    <circle class="st7" cx="412" cy="413" r="6"/>
+    <circle class="st6" cx="512" cy="413" r="6"/>
   </g>
-
-  <!-- Layer characteristics -->
-  <g transform="translate(150, 440)" font-family="Inter, Arial" font-size="12" fill="#64748B">
-    <text x="0" y="0">• Fewer connections</text>
-    <text x="200" y="0">• Balanced distribution</text>
-    <text x="400" y="0">• Most connections</text>
+  <g>
+    <text class="st16" transform="translate(112 468)"><tspan x="0" y="0">• Fewer connections</tspan></text>
+    <text class="st16" transform="translate(312 468)"><tspan x="0" y="0">• Balanced distribution</tspan></text>
+    <text class="st16" transform="translate(512 468)"><tspan x="0" y="0">• Most connections</tspan></text>
   </g>
-
-  <!-- Legend -->
-  <g transform="translate(150, 20)" font-family="Inter, Arial" font-size="14" fill="#94A3B8">
-    <circle cx="10" cy="0" r="6" fill="url(#nodeGradient)"/>
-    <text x="25" y="5">Regular Node</text>
-    
-    <circle cx="150" cy="0" r="6" fill="url(#activeNodeGradient)"/>
-    <text x="165" y="5">Entry Point</text>
+  <g>
+    <circle class="st11" cx="656.8" cy="37" r="6"/>
+    <text class="st13" transform="translate(671.8 42)"><tspan x="0" y="0">Regular Node</tspan></text>
+    <circle class="st8" cx="658.2" cy="67" r="6"/>
+    <text class="st13" transform="translate(673.2 72)"><tspan x="0" y="0">Entry Point</tspan></text>
   </g>
 </svg>

@@ -444,7 +444,6 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
         return []*Node{entryPoint}
     }
 
-    // Initialize result set with entry point
     visited := sync.Map{}
     visitedResults := sync.Map{}
     candidates := &nodeDistHeap{}
@@ -452,67 +451,65 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
     heap.Init(candidates)
     heap.Init(resultSet)
 
-    // Start with entry point
     entryDist := h.DistanceFunc(entryPoint.Vector, vec)
     heap.Push(candidates, &nodeDist{entryPoint, entryDist})
     heap.Push(resultSet, &nodeDist{entryPoint, entryDist})
     visited.Store(entryPoint.ID, true)
     visitedResults.Store(entryPoint.ID, true)
 
-    var candidateMutex sync.Mutex
-
-    // Process candidates
+    // Process in batches
+    batchSize := 256
     for candidates.Len() > 0 {
-        candidateMutex.Lock()
-        current := heap.Pop(candidates).(*nodeDist)
-        candidateMutex.Unlock()
+        // Collect candidates and their neighbors
+        neighbors := make([]*Node, 0, batchSize*h.M)
+        candidateNodes := make([]*Node, 0, batchSize)
 
-        furthestDist := (*resultSet)[0].dist // Max distance in result set
+        // Gather neighbors from current batch of candidates
+        for i := 0; i < batchSize && candidates.Len() > 0; i++ {
+            node := heap.Pop(candidates).(*nodeDist).node
+            candidateNodes = append(candidateNodes, node)
 
-        if current.dist > furthestDist && resultSet.Len() >= ef {
-            continue
-        }
-
-        // Process neighbors concurrently
-        var wg sync.WaitGroup
-        current.node.RLock()
-        if level < len(current.node.Levels) && current.node.Levels[level] != nil {
-            neighbors := current.node.Levels[level].Connections
-            current.node.RUnlock()
-
-            for _, neighbor := range neighbors {
-                if neighbor == nil {
-                    continue
-                }
-                if _, seen := visited.LoadOrStore(neighbor.ID, true); seen {
-                    continue
-                }
-
-                wg.Add(1)
-                go func(n *Node) {
-                    defer wg.Done()
-                    neighborDist := h.DistanceFunc(n.Vector, vec)
-
-                    candidateMutex.Lock()
-                    if resultSet.Len() < ef || neighborDist < (*resultSet)[0].dist {
-                        if _, seen := visitedResults.LoadOrStore(n.ID, true); !seen {
-                            heap.Push(candidates, &nodeDist{n, neighborDist})
-                            heap.Push(resultSet, &nodeDist{n, neighborDist})
-                            if resultSet.Len() > ef {
-                                heap.Pop(resultSet)
-                            }
+            node.RLock()
+            if level < len(node.Levels) && node.Levels[level] != nil {
+                for _, neighbor := range node.Levels[level].Connections {
+                    if neighbor != nil {
+                        if _, seen := visited.LoadOrStore(neighbor.ID, true); !seen {
+                            neighbors = append(neighbors, neighbor)
                         }
                     }
-                    candidateMutex.Unlock()
-                }(neighbor)
+                }
             }
-        } else {
-            current.node.RUnlock()
+            node.RUnlock()
         }
-        wg.Wait()
+
+        // Calculate distances in batch
+        if len(neighbors) > 0 {
+            // Create a slice of vectors
+            batchVectors := make([]Vector, len(neighbors))
+            for i, n := range neighbors {
+                // Make a copy of the vector to ensure it's contiguous in memory
+                batchVectors[i] = make(Vector, len(n.Vector))
+                copy(batchVectors[i], n.Vector)
+            }
+
+            distances := BatchEuclidean(vec, batchVectors)
+
+            // Process results
+            for i, dist := range distances {
+                node := neighbors[i]
+                if resultSet.Len() < ef || dist < (*resultSet)[0].dist {
+                    if _, seen := visitedResults.LoadOrStore(node.ID, true); !seen {
+                        heap.Push(candidates, &nodeDist{node, dist})
+                        heap.Push(resultSet, &nodeDist{node, dist})
+                        if resultSet.Len() > ef {
+                            heap.Pop(resultSet)
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    // Extract results
     results := make([]*Node, resultSet.Len())
     for i := len(results) - 1; i >= 0; i-- {
         results[i] = heap.Pop(resultSet).(*nodeDist).node

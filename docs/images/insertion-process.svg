@@ -94,7 +94,7 @@
   </g>
 
   <!-- Legend -->
-  <g transform="translate(650, 30)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
+  <g transform="translate(625, 10)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
     <circle cx="10" cy="10" r="6" fill="url(#nodeGradient)"/>
     <text x="25" y="14">Existing Node</text>
     

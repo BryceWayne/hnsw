@@ -1,121 +1,231 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
-  <!-- Background -->
-  <rect width="800" height="500" fill="#0F172A"/>
-  
-  <!-- Gradient definitions -->
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 800 500">
+  <!-- Generator: Adobe Illustrator 29.1.0, SVG Export Plug-In . SVG Version: 2.1.0 Build 142)  -->
   <defs>
-    <linearGradient id="nodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#475569"/>
-      <stop offset="100%" style="stop-color:#334155"/>
+    <style>
+      .st0 {
+        fill: #dc2626;
+      }
+
+      .st0, .st1, .st2, .st3 {
+        font-family: ArialMT, Arial;
+      }
+
+      .st0, .st1, .st2, .st3, .st4 {
+        isolation: isolate;
+      }
+
+      .st0, .st1, .st3 {
+        font-size: 12px;
+      }
+
+      .st5 {
+        fill: url(#linear-gradient2);
+      }
+
+      .st6 {
+        fill: url(#linear-gradient1);
+      }
+
+      .st7 {
+        fill: url(#linear-gradient9);
+      }
+
+      .st8 {
+        fill: url(#linear-gradient3);
+      }
+
+      .st9 {
+        fill: url(#linear-gradient6);
+      }
+
+      .st10 {
+        fill: url(#linear-gradient8);
+      }
+
+      .st11 {
+        fill: url(#linear-gradient5);
+      }
+
+      .st12 {
+        fill: url(#linear-gradient4);
+      }
+
+      .st13, .st1, .st2 {
+        fill: #94a3b8;
+      }
+
+      .st13, .st14, .st15 {
+        stroke-width: 2px;
+      }
+
+      .st13, .st15 {
+        stroke: #60a5fa;
+        stroke-dasharray: 5 5;
+      }
+
+      .st16 {
+        fill: url(#linear-gradient13);
+      }
+
+      .st17 {
+        fill: url(#linear-gradient12);
+      }
+
+      .st18 {
+        fill: url(#linear-gradient11);
+      }
+
+      .st19 {
+        fill: url(#linear-gradient10);
+      }
+
+      .st20 {
+        fill: url(#linear-gradient);
+      }
+
+      .st21 {
+        fill: #0f172a;
+      }
+
+      .st2 {
+        font-size: 14px;
+      }
+
+      .st14 {
+        stroke: #dc2626;
+      }
+
+      .st3 {
+        fill: #64748b;
+      }
+
+      .st4 {
+        fill: url(#linear-gradient7);
+        opacity: .3;
+      }
+    </style>
+    <linearGradient id="linear-gradient" x1="89.9" y1="641" x2="90.9" y2="640" gradientTransform="translate(-1724 15461) scale(24 -24)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#3b82f6"/>
     </linearGradient>
-    <linearGradient id="activeNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#60A5FA"/>
-      <stop offset="100%" style="stop-color:#3B82F6"/>
+    <linearGradient id="linear-gradient1" x1="93.5" y1="632.5" x2="93.5" y2="631.5" gradientTransform="translate(-8856 6415) scale(100 -10)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
     </linearGradient>
-    <linearGradient id="visitedNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#34D399"/>
-      <stop offset="100%" style="stop-color:#059669"/>
+    <linearGradient id="linear-gradient2" x1="89" y1="639.8" x2="90" y2="638.8" gradientTransform="translate(-1346 12975) scale(20 -20)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
     </linearGradient>
-    <linearGradient id="targetNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#F87171"/>
-      <stop offset="100%" style="stop-color:#DC2626"/>
+    <linearGradient id="linear-gradient3" x1="89" y1="639.8" x2="90" y2="638.8" gradientTransform="translate(-1246 12975) scale(20 -20)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#3b82f6"/>
     </linearGradient>
-    <linearGradient id="beamGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:0.2"/>
-      <stop offset="100%" style="stop-color:#60A5FA;stop-opacity:0"/>
+    <linearGradient id="linear-gradient4" x1="87.8" y1="637.9" x2="88.8" y2="636.9" gradientTransform="translate(-1018 10489) scale(16 -16)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient5" x1="87.8" y1="637.9" x2="88.8" y2="636.9" gradientTransform="translate(-918 10489) scale(16 -16)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient6" x1="87.8" y1="637.9" x2="88.8" y2="636.9" gradientTransform="translate(-818 10489) scale(16 -16)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#475569"/>
+      <stop offset="1" stop-color="#334155"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient7" x1="93.5" y1="632.5" x2="93.5" y2="631.5" gradientTransform="translate(-8806 6615) scale(100 -10)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity=".2"/>
+      <stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient8" x1="85.7" y1="634.9" x2="86.7" y2="633.9" gradientTransform="translate(-590 8003) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient9" x1="85.7" y1="634.9" x2="86.7" y2="633.9" gradientTransform="translate(-540 8003) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient10" x1="85.7" y1="634.9" x2="86.7" y2="633.9" gradientTransform="translate(-490 8003) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f87171"/>
+      <stop offset="1" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient11" x1="91.1" y1="636.2" x2="92.1" y2="635.2" gradientTransform="translate(-430 8033) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#60a5fa"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient12" x1="91.1" y1="636.2" x2="92.1" y2="635.2" gradientTransform="translate(-430 8053) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#34d399"/>
+      <stop offset="1" stop-color="#059669"/>
+    </linearGradient>
+    <linearGradient id="linear-gradient13" x1="91.1" y1="636.2" x2="92.1" y2="635.2" gradientTransform="translate(-430 8073) scale(12 -12)" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#f87171"/>
+      <stop offset="1" stop-color="#dc2626"/>
     </linearGradient>
   </defs>
-
-  <!-- Step Labels -->
-  <g font-family="Inter, Arial" font-size="14" fill="#94A3B8" text-anchor="end">
-    <text x="90" y="120">Step 1:</text>
-    <text x="90" y="220">Step 2:</text>
-    <text x="90" y="320">Step 3:</text>
-    <text x="90" y="420">Step 4:</text>
-  </g>
-
-  <!-- Layer Labels -->
-  <g font-family="Inter, Arial" font-size="12" fill="#64748B">
-    <text x="120" y="90">Layer 3</text>
-    <text x="120" y="190">Layer 2</text>
-    <text x="120" y="290">Layer 1</text>
-    <text x="120" y="390">Layer 0</text>
-  </g>
-
-  <!-- Search Process Animation -->
+  <rect class="st21" width="800" height="500"/>
   <g>
-    <!-- Entry Point Search -->
-    <g transform="translate(150,50)">
-      <circle cx="300" cy="40" r="12" fill="url(#activeNodeGradient)">
-        <animate attributeName="r" values="12;14;12" dur="2s" repeatCount="indefinite"/>
+    <text class="st2" transform="translate(45.6 120)"><tspan x="0" y="0">Step 1:</tspan></text>
+    <text class="st2" transform="translate(45.6 220)"><tspan x="0" y="0">Step 2:</tspan></text>
+    <text class="st2" transform="translate(45.6 320)"><tspan x="0" y="0">Step 3:</tspan></text>
+    <text class="st2" transform="translate(45.6 420)"><tspan x="0" y="0">Step 4:</tspan></text>
+  </g>
+  <g>
+    <text class="st3" transform="translate(280.9 90)"><tspan x="0" y="0">Layer 3</tspan></text>
+    <text class="st3" transform="translate(280.9 190)"><tspan x="0" y="0">Layer 2</tspan></text>
+    <text class="st3" transform="translate(280.9 290)"><tspan x="0" y="0">Layer 1</tspan></text>
+    <text class="st3" transform="translate(280.9 390)"><tspan x="0" y="0">Layer 0</tspan></text>
+  </g>
+  <g>
+    <g>
+      <circle class="st20" cx="444.7" cy="90" r="12">
+        <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="12;14;12"/>
       </circle>
-      <text x="320" y="30" font-family="Inter, Arial" font-size="12" fill="#94A3B8">Entry Point</text>
-      
-      <!-- Search beam -->
-      <path d="M300,40 Q350,60 400,40" fill="url(#beamGradient)">
-        <animate attributeName="opacity" values="0;0.3;0" dur="2s" repeatCount="indefinite"/>
+      <text class="st1" transform="translate(464.7 80)"><tspan x="0" y="0">Entry Point</tspan></text>
+      <path class="st6" d="M444.7,90c33.3,13.3,66.7,13.3,100,0">
+        <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="0;0.3;0"/>
       </path>
     </g>
-
-    <!-- Layer Navigation -->
-    <g transform="translate(150,150)">
-      <circle cx="300" cy="40" r="10" fill="url(#visitedNodeGradient)"/>
-      <circle cx="400" cy="40" r="10" fill="url(#activeNodeGradient)">
-        <animate attributeName="r" values="10;12;10" dur="2s" repeatCount="indefinite"/>
+    <g>
+      <circle class="st5" cx="444.7" cy="190" r="10"/>
+      <circle class="st8" cx="544.7" cy="190" r="10">
+        <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="10;12;10"/>
       </circle>
-      
-      <!-- Search path -->
-      <path d="M300,40 L400,40" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5">
-        <animate attributeName="stroke-dashoffset" values="10;0" dur="1s" repeatCount="indefinite"/>
+      <path class="st15" d="M444.7,190h100">
+        <animate accumulate="none" additive="replace" attributeName="stroke-dashoffset" calcMode="linear" dur="1s" fill="remove" repeatCount="indefinite" restart="always" values="10;0"/>
       </path>
     </g>
-
-    <!-- Ground Layer Search -->
-    <g transform="translate(150,250)">
-      <circle cx="250" cy="40" r="8" fill="url(#visitedNodeGradient)"/>
-      <circle cx="350" cy="40" r="8" fill="url(#activeNodeGradient)"/>
-      <circle cx="450" cy="40" r="8" fill="url(#nodeGradient)"/>
-      
-      <!-- Search beam -->
-      <path d="M350,40 Q400,60 450,40" fill="url(#beamGradient)" opacity="0.3"/>
+    <g>
+      <circle class="st12" cx="394.7" cy="290" r="8"/>
+      <circle class="st11" cx="494.7" cy="290" r="8"/>
+      <circle class="st9" cx="594.7" cy="290" r="8"/>
+      <path class="st4" d="M494.7,290c33.3,13.3,66.7,13.3,100,0"/>
     </g>
-
-    <!-- Final Result -->
-    <g transform="translate(150,350)">
-      <circle cx="300" cy="40" r="6" fill="url(#visitedNodeGradient)"/>
-      <circle cx="350" cy="40" r="6" fill="url(#visitedNodeGradient)"/>
-      <circle cx="400" cy="40" r="6" fill="url(#targetNodeGradient)">
-        <animate attributeName="r" values="6;8;6" dur="1s" repeatCount="indefinite"/>
+    <g>
+      <circle class="st10" cx="444.7" cy="390" r="6"/>
+      <circle class="st7" cx="494.7" cy="390" r="6"/>
+      <circle class="st19" cx="544.7" cy="390" r="6">
+        <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="1s" fill="remove" repeatCount="indefinite" restart="always" values="6;8;6"/>
       </circle>
-      
-      <!-- Result indicator -->
-      <path d="M400,25 L400,15" stroke="#DC2626" stroke-width="2">
-        <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite"/>
+      <path class="st14" d="M544.7,375v-10">
+        <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="0;1;0"/>
       </path>
-      <text x="400" y="10" text-anchor="middle" font-family="Inter, Arial" font-size="12" fill="#DC2626">Found!</text>
+      <text class="st0" transform="translate(526 360)"><tspan x="0" y="0">Found!</tspan></text>
     </g>
   </g>
-
-  <!-- Step Descriptions -->
-  <g transform="translate(600,50)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <text y="70">Enter at top layer</text>
-    <text y="170">Navigate through layers</text>
-    <text y="270">Search ground layer</text>
-    <text y="370">Return nearest neighbor</text>
+  <g>
+    <text class="st1" transform="translate(105 120)"><tspan x="0" y="0">Enter at top layer</tspan></text>
+    <text class="st1" transform="translate(105 220)"><tspan x="0" y="0">Navigate through layers</tspan></text>
+    <text class="st1" transform="translate(105 320)"><tspan x="0" y="0">Search ground layer</tspan></text>
+    <text class="st1" transform="translate(105 420)"><tspan x="0" y="0">Return nearest neighbor</tspan></text>
   </g>
-
-  <!-- Legend -->
-  <g transform="translate(600,420)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
-    <circle cx="10" cy="0" r="6" fill="url(#activeNodeGradient)"/>
-    <text x="25" y="4">Current Node</text>
-    
-    <circle cx="10" cy="20" r="6" fill="url(#visitedNodeGradient)"/>
-    <text x="25" y="24">Visited Node</text>
-    
-    <circle cx="10" cy="40" r="6" fill="url(#targetNodeGradient)"/>
-    <text x="25" y="44">Target Node</text>
-    
-    <path d="M0,60 L20,60" stroke="#60A5FA" stroke-width="2" stroke-dasharray="5,5"/>
-    <text x="25" y="64">Search Path</text>
+  <g>
+    <circle class="st18" cx="669.6" cy="405" r="6"/>
+    <text class="st1" transform="translate(684.6 409)"><tspan x="0" y="0">Current Node</tspan></text>
+    <circle class="st17" cx="669.6" cy="425" r="6"/>
+    <text class="st1" transform="translate(684.6 429)"><tspan x="0" y="0">Visited Node</tspan></text>
+    <circle class="st16" cx="669.6" cy="445" r="6"/>
+    <text class="st1" transform="translate(684.6 449)"><tspan x="0" y="0">Target Node</tspan></text>
+    <path class="st13" d="M659.6,465h20"/>
+    <text class="st1" transform="translate(684.6 469)"><tspan x="0" y="0">Search Path</tspan></text>
   </g>
 </svg>
