@@ -354,34 +354,34 @@ ok      github.com/BryceWayne/hnsw      0.022s
 ```
 
 
-Current benchmark results (Intel i9-12900K):
+Benchmark results (Intel i9-12900K):
 
 ```
 Operation                            Time/op
-Sequential Insert                    ~263µs
-Sequential Search                    ~154µs
-Parallel Search                      ~29µs
-Batch Insert (100 vectors)          ~250µs
-Batch Search                        ~174ns
+Sequential Insert                    ~269µs
+Sequential Search                    ~146µs
+Parallel Search                      ~ 29µs
+Batch Insert                         ~262µs
+Batch Search                         ~170ns
 
-Dimension Scaling:
-Size      Dim    Time/op
-1K        32     ~42µs
-1K        128    ~36µs
-1K        512    ~23µs
-10K       32     ~21µs
-10K       128    ~20µs
-10K       512    ~15µs
-100K      32     ~20µs
-100K      128    ~18µs
-100K      512    ~13µs
+Dimension Scaling (ns/op):
+Size      Dim    Time
+1K        32     32,611
+1K        128    29,973
+1K        512    18,247
+10K       32     20,716
+10K       128    18,288
+10K       512    13,414
+100K      32     24,083
+100K      128    16,302
+100K      512    13,650
 ```
 
 Key Features:
-- AVX2 vectorized distance calculations
-- 5.3x speedup with parallel search
-- Efficient scaling with dimensions
-- Optimal batch operations
+- 5x speedup with parallel search
+- Sub-microsecond batch search
+- Better performance with higher dimensions
+- Optimal for large datasets (100K+ vectors)
 
 ### Hardware Requirements
 - AVX2 support for SIMD optimizations
