@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 400">
+  <!-- Background -->
+  <rect width="800" height="400" fill="#0F172A"/>
+  
+  <!-- Gradient definitions -->
+  <defs>
+    <linearGradient id="nodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#475569"/>
+      <stop offset="100%" style="stop-color:#334155"/>
+    </linearGradient>
+    <linearGradient id="deleteNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F87171"/>
+      <stop offset="100%" style="stop-color:#DC2626"/>
+    </linearGradient>
+    <linearGradient id="reconnectNodeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA"/>
+      <stop offset="100%" style="stop-color:#3B82F6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Layers -->
+  <g id="layers" stroke="#1E293B" stroke-width="1">
+    <line x1="50" y1="100" x2="750" y2="100"/>
+    <line x1="50" y1="200" x2="750" y2="200"/>
+    <line x1="50" y1="300" x2="750" y2="300"/>
+  </g>
+
+  <!-- Layer Labels -->
+  <g font-family="Inter, Arial" font-size="14" fill="#94A3B8">
+    <text x="20" y="105">L2</text>
+    <text x="20" y="205">L1</text>
+    <text x="20" y="305">L0</text>
+  </g>
+
+  <!-- Old Connections (being removed) -->
+  <g stroke="#F87171" stroke-width="1" stroke-opacity="0.3" stroke-dasharray="5,5">
+    <path d="M400,200 L350,300">
+      <animate attributeName="opacity" values="0.3;0" dur="1s" begin="1s" fill="freeze"/>
+    </path>
+    <path d="M400,200 L450,300">
+      <animate attributeName="opacity" values="0.3;0" dur="1s" begin="1s" fill="freeze"/>
+    </path>
+  </g>
+
+  <!-- New Connections -->
+  <g stroke="#60A5FA" stroke-width="2">
+    <path d="M300,200 L350,300">
+      <animate attributeName="stroke-dasharray" values="0,1000;200,0" dur="1s" begin="2s" fill="freeze"/>
+    </path>
+    <path d="M500,200 L450,300">
+      <animate attributeName="stroke-dasharray" values="0,1000;200,0" dur="1s" begin="2s" fill="freeze"/>
+    </path>
+  </g>
+
+  <!-- Existing Connections -->
+  <g stroke="#94A3B8" stroke-width="1" stroke-opacity="0.3">
+    <path d="M200,100 L300,200"/>
+    <path d="M400,100 L300,200"/>
+    <path d="M400,100 L500,200"/>
+    <path d="M600,100 L500,200"/>
+    <path d="M300,200 L300,300"/>
+    <path d="M500,200 L500,300"/>
+  </g>
+
+  <!-- Nodes -->
+  <g id="nodes">
+    <!-- L2 nodes -->
+    <circle cx="200" cy="100" r="12" fill="url(#nodeGradient)"/>
+    <circle cx="400" cy="100" r="12" fill="url(#nodeGradient)"/>
+    <circle cx="600" cy="100" r="12" fill="url(#nodeGradient)"/>
+    
+    <!-- L1 nodes -->
+    <circle cx="300" cy="200" r="12" fill="url(#reconnectNodeGradient)"/>
+    <circle cx="500" cy="200" r="12" fill="url(#reconnectNodeGradient)"/>
+    
+    <!-- Deleted node with animation -->
+    <circle cx="400" cy="200" r="12" fill="url(#deleteNodeGradient)">
+      <animate attributeName="r" values="12;0" dur="1s" begin="0.5s" fill="freeze"/>
+      <animate attributeName="opacity" values="1;0" dur="1s" begin="0.5s" fill="freeze"/>
+    </circle>
+    
+    <!-- L0 nodes -->
+    <circle cx="300" cy="300" r="12" fill="url(#nodeGradient)"/>
+    <circle cx="350" cy="300" r="12" fill="url(#nodeGradient)"/>
+    <circle cx="450" cy="300" r="12" fill="url(#nodeGradient)"/>
+    <circle cx="500" cy="300" r="12" fill="url(#nodeGradient)"/>
+  </g>
+
+  <!-- Legend -->
+  <g transform="translate(650, 30)" font-family="Inter, Arial" font-size="12" fill="#94A3B8">
+    <circle cx="10" cy="10" r="6" fill="url(#deleteNodeGradient)"/>
+    <text x="25" y="14">Deleted Node</text>
+    
+    <circle cx="10" cy="30" r="6" fill="url(#reconnectNodeGradient)"/>
+    <text x="25" y="34">Reconnecting Node</text>
+    
+    <path d="M0,50 L20,50" stroke="#60A5FA" stroke-width="2"/>
+    <text x="25" y="54">New Connection</text>
+
+    <path d="M0,70 L20,70" stroke="#F87171" stroke-width="1" stroke-dasharray="5,5" stroke-opacity="0.3"/>
+    <text x="25" y="74">Removed Connection</text>
+  </g>
+</svg>
