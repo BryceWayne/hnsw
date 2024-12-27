@@ -1,3 +1,4 @@
 docs/latex/*
 !docs/latex/*.tex
 examples/example
+hnsw_index.gob
