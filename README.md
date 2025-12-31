@@ -99,7 +99,7 @@ func main() {
     for b := 0; b < numBatches; b++ {
         start := b * *batchSize
         end := min(start+*batchSize, *numVectors)
-        
+
         var wg sync.WaitGroup
         for i := start; i < end; i++ {
             wg.Add(1)
@@ -201,7 +201,7 @@ func (h *HNSW) Insert(id int, vec Vector)
 ```
 Inserts vector with given ID. Thread-safe.
 
-#### Search 
+#### Search
 ```go
 func (h *HNSW) Search(vec Vector, k int) []int
 ```
@@ -214,7 +214,7 @@ func (h *HNSW) Delete(id int)
 Removes vector from index. Thread-safe.
 
 #### Save/Load
-```go 
+```go
 func (h *HNSW) Save(filename string) error
 func Load(filename string, distanceFunc DistanceFunc) (*HNSW, error)
 ```
@@ -248,7 +248,7 @@ Sample benchmark (256d vectors, 10k points):
 hnsw/
 ├── examples/      # Example usage
 ├── distance.go    # Distance metrics
-├── hnsw.go       # Main HNSW implementation  
+├── hnsw.go       # Main HNSW implementation
 ├── node.go       # Node implementation
 ├── serialize.go  # Serialization logic
 └── types.go      # Core data types
@@ -259,7 +259,25 @@ hnsw/
 HNSW (Hierarchical Navigable Small World) is an algorithm for approximate nearest neighbor search that creates a layered graph structure. Each layer is a "small world" graph, with the number of connections between nodes decreasing as you go up the layers.
 
 ### HNSW Structure
-![HNSW Overview](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/hnsw.svg)
+```mermaid
+graph TD
+    subgraph L3 [Layer 3]
+        Entry[Entry Point]
+    end
+    subgraph L2 [Layer 2]
+        N2_1(( )) --- N2_2(( ))
+    end
+    subgraph L1 [Layer 1]
+        N1_1(( )) --- N1_2(( )) --- N1_3(( ))
+    end
+    subgraph L0 [Layer 0 - Ground]
+        N0_1(( )) --- N0_2(( )) --- N0_3(( )) --- N0_4(( ))
+    end
+
+    Entry -.-> N2_1
+    N2_2 -.-> N1_2
+    N1_3 -.-> N0_3
+```
 
 The hierarchical structure consists of layers:
 - L0 (ground layer): Most connections, finest-grained search
@@ -273,7 +291,18 @@ Key properties:
 - Layer count scales logarithmically with data size
 
 ### Search Process
-![HNSW Search Process](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/search-process.svg)
+```mermaid
+flowchart TD
+    Start([Start]) --> Entry[Enter at Layer 3]
+    Entry --> TraverseL3[Traverse L3]
+    TraverseL3 --> DescendL2{Descend}
+    DescendL2 --> TraverseL2[Traverse L2]
+    TraverseL2 --> DescendL1{Descend}
+    DescendL1 --> TraverseL1[Traverse L1]
+    TraverseL1 --> DescendL0{Descend}
+    DescendL0 --> SearchL0[Search Layer 0]
+    SearchL0 --> Result([Found Nearest Neighbors])
+```
 
 1. Begin at entry point in highest layer
 2. Explore current layer to find closest node
@@ -281,7 +310,19 @@ Key properties:
 4. Final search in bottom layer (Layer 0)
 
 ### Insertion Process
-![HNSW Insertion](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/insertion-process.svg)
+```mermaid
+flowchart TD
+    Start([New Node]) --> MaxLevel{Select Max Level}
+    MaxLevel --> Find[Find Neighbors at Level]
+    Find --> Connect[Create Connections]
+    Connect --> Prune{Connections > M?}
+    Prune -- Yes --> Remove[Prune Weakest]
+    Prune -- No --> NextLevel
+    Remove --> NextLevel
+    NextLevel{More Levels?} -- Yes --> Descend[Descend Level]
+    Descend --> Find
+    NextLevel -- No --> Done([Inserted])
+```
 
 1. Randomly select maximum level for new node
 2. Find nearest neighbors at each level
@@ -289,11 +330,21 @@ Key properties:
 4. Maintain connection limits through pruning
 
 ### Deletion Process
-![HNSW Deletion](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/deletion-process.svg)
+```mermaid
+flowchart TD
+    Start([Delete Node]) --> Locate[Locate Node]
+    Locate --> Neighbors[Identify Neighbors]
+    Neighbors --> Remove[Remove Incoming Edges]
+    Remove --> Reconnect[Reconnect Neighbors]
+    Reconnect --> CheckM{Connections < M_min}
+    CheckM -- Yes --> Repair[Repair Connectivity]
+    CheckM -- No --> Done
+    Repair --> Done([Deleted])
+```
 
 The deletion process involves:
 1. Locate target node and connections
-2. Remove incoming connections from neighbors 
+2. Remove incoming connections from neighbors
 3. Reconnect affected neighbors to maintain graph connectivity
 4. Update layer structures as needed
 5. Thread-safe concurrent deletions
@@ -305,7 +356,18 @@ Key aspects:
 - M/Mmax limits preserved
 
 ### Network Properties
-![HNSW Growth](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/growth-process.svg)
+```mermaid
+graph TD
+    Top((Entry)) --> Mid1(( ))
+    Top --> Mid2(( ))
+    Mid1 --> Bot1(( ))
+    Mid1 --> Bot2(( ))
+    Mid2 --> Bot3(( ))
+    Mid2 --> Bot4(( ))
+    Bot1 --- Bot2
+    Bot2 --- Bot3
+    Bot3 --- Bot4
+```
 
 The network maintains efficiency through:
 - Balance of short/long-range connections
@@ -313,18 +375,43 @@ The network maintains efficiency through:
 - Hierarchical navigation structure
 
 ### EF Parameter Impact
-![EF Impact](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/ef-impact.svg)
+```mermaid
+flowchart LR
+    EF[EF Parameter] --> Low[Low Value]
+    EF --> High[High Value]
+    Low --> Fast[Faster Search]
+    Low --> LowAcc[Lower Accuracy]
+    High --> Slow[Slower Search]
+    High --> HighAcc[Higher Accuracy]
+```
 
 EF (Exploration Factor) controls:
 - Lower EF: Faster search, less accurate
 - Higher EF: Slower search, more accurate
 
 ### Batch Operations
-![Batch Operations](https://raw.githubusercontent.com/BryceWayne/hnsw/refs/heads/root/docs/images/batch-operations.svg)
+```mermaid
+sequenceDiagram
+    participant Main
+    participant W1 as Worker 1
+    participant W2 as Worker 2
+    participant Index
+
+    Main->>W1: Batch 1 (25 items)
+    Main->>W2: Batch 2 (25 items)
+
+    par Parallel Insert
+        W1->>Index: Insert Nodes
+        W2->>Index: Insert Nodes
+    end
+
+    W1-->>Main: Done
+    W2-->>Main: Done
+```
 
 The index supports efficient batch operations:
 1. Data is split into configurable batch sizes (default 25 vectors)
-2. Worker threads process batches in parallel 
+2. Worker threads process batches in parallel
 3. Each worker handles node insertion and connection formation
 4. Concurrent operations maintain thread safety
 5. Progress tracking for large batches
@@ -434,7 +521,7 @@ Key Features:
 - Recommended: 16GB+ RAM for 100K+ vectors
 
 ### Tuning Guidelines
-1. Batch Size: 
+1. Batch Size:
    - Small datasets (<10K): 25-50
    - Large datasets: 100-200
 
