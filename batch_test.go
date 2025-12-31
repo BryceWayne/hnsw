@@ -17,7 +17,7 @@ func TestBatchOperations(t *testing.T) {
 	for i := 0; i < 100; i++ {
 		vectors[i] = Vector{float64(i / 10), float64(i % 10)}
 	}
-	h.BatchInsert(vectors)
+	h.BatchInsert(vectors, 10)
 
 	if len(h.Nodes) != 100 {
 		t.Errorf("BatchInsert: got %d nodes, want 100", len(h.Nodes))
@@ -92,7 +92,7 @@ func BenchmarkBatchOperations(b *testing.B) {
 		}
 
 		b.ResetTimer()
-		h.BatchInsert(vectors)
+		h.BatchInsert(vectors, 100)
 	})
 
 	b.Run("BatchSearch", func(b *testing.B) {

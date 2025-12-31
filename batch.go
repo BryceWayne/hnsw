@@ -65,8 +65,10 @@ func (bi *BatchInserter) Inserted() int64 {
 }
 
 // BatchInsert adds multiple vectors efficiently
-func (h *HNSW) BatchInsert(vectors map[int]Vector) {
-	batchSize := 100
+func (h *HNSW) BatchInsert(vectors map[int]Vector, batchSize int) {
+	if batchSize <= 0 {
+		batchSize = 100
+	}
 	if len(vectors) < batchSize {
 		batchSize = len(vectors)
 	}
