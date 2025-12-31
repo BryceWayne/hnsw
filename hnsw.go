@@ -63,6 +63,11 @@ func (h *HNSW) Insert(id int, vec Vector) {
     h.mutex.Lock()
     defer h.mutex.Unlock()
 
+    // Clear deleted status if it exists
+    if h.deletedNodes[id] {
+        delete(h.deletedNodes, id)
+    }
+
     newNode := &Node{
         ID:     id,
         Vector: vec,
@@ -213,7 +218,7 @@ func (h *HNSW) Delete(id int) {
     h.deletedNodes[id] = true
     delete(h.Nodes, id)
 
-    if h.EntryPoint.ID == id {
+    if h.EntryPoint != nil && h.EntryPoint.ID == id {
         for _, node := range h.Nodes {
             h.EntryPoint = node
             break
@@ -484,15 +489,13 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
 
         // Calculate distances in batch
         if len(neighbors) > 0 {
-            // Create a slice of vectors
-            batchVectors := make([]Vector, len(neighbors))
+            dim := len(vec)
+            flatData := make([]float64, len(neighbors)*dim)
             for i, n := range neighbors {
-                // Make a copy of the vector to ensure it's contiguous in memory
-                batchVectors[i] = make(Vector, len(n.Vector))
-                copy(batchVectors[i], n.Vector)
+                copy(flatData[i*dim:], n.Vector)
             }
 
-            distances := BatchEuclidean(vec, batchVectors)
+            distances := BatchEuclideanFlat(vec, flatData, dim)
 
             // Process results
             for i, dist := range distances {
