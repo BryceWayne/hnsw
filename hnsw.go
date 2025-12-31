@@ -4,6 +4,7 @@ package hnsw
 import (
     "container/heap"
     "encoding/gob"
+    "io"
     "math/rand"
     "os"
     "runtime"
@@ -223,6 +224,17 @@ func (h *HNSW) Delete(id int) {
 
 // Save persists the index to a file
 func (h *HNSW) Save(filename string) error {
+    file, err := os.Create(filename)
+    if err != nil {
+        return err
+    }
+    defer file.Close()
+
+    return h.SaveToWriter(file)
+}
+
+// SaveToWriter persists the index to an io.Writer
+func (h *HNSW) SaveToWriter(w io.Writer) error {
     h.mutex.RLock()
     defer h.mutex.RUnlock()
 
@@ -263,13 +275,7 @@ func (h *HNSW) Save(filename string) error {
         serializable.Nodes[id] = sNode
     }
 
-    file, err := os.Create(filename)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
-
-    encoder := gob.NewEncoder(file)
+    encoder := gob.NewEncoder(w)
     return encoder.Encode(serializable)
 }
 
@@ -281,8 +287,13 @@ func Load(filename string, distanceFunc DistanceFunc) (*HNSW, error) {
     }
     defer file.Close()
 
+    return LoadFromReader(file, distanceFunc)
+}
+
+// LoadFromReader reads the index from an io.Reader
+func LoadFromReader(r io.Reader, distanceFunc DistanceFunc) (*HNSW, error) {
     var serialized SerializableHNSW
-    decoder := gob.NewDecoder(file)
+    decoder := gob.NewDecoder(r)
     if err := decoder.Decode(&serialized); err != nil {
         return nil, err
     }
