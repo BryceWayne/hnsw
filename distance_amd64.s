@@ -143,8 +143,7 @@ TEXT ·BatchEuclideanAVX2Flat(SB), NOSPLIT, $0-80
     MOVQ dim+48(FP), R8            // dimension
     MOVQ results+56(FP), R9        // results ptr
 
-    MOVQ flatVectors_len+32(FP), CX
-    SHRQ $10, CX                   // divide by 1024 to get vector count
+    MOVQ results_len+64(FP), CX    // results length is the vector count
 
     XORQ R10, R10                  // vector index
 

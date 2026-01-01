@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/BryceWayne/hnsw"
-	"golang.org/x/sys/cpu"
 )
 
 var (
@@ -58,9 +57,10 @@ func getMemoryUsage() uint64 {
 func main() {
 	flag.Parse()
 
-	if cpu.X86.HasAVX2 {
-		fmt.Println("Using AVX2")
-	}
+	// Removed platform-specific cpu check to avoid compilation issues on non-amd64 architectures
+	// if cpu.X86.HasAVX2 {
+	// 	fmt.Println("Using AVX2")
+	// }
 
 	rand.Seed(time.Now().UnixNano())
 
