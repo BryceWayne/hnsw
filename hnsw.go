@@ -357,8 +357,11 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
         return []*Node{entryPoint}
     }
 
-    visited := make(map[int]bool)
-    visitedResults := make(map[int]bool) // Track visited nodes that are potential results
+    visited := getVisitedMap()
+    defer putVisitedMap(visited)
+
+    visitedResults := getVisitedMap() // Track visited nodes that are potential results
+    defer putVisitedMap(visitedResults)
 
     // Initialize candidates with entry point
     candidates := []*Node{entryPoint}
@@ -447,10 +450,18 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
         return []*Node{entryPoint}
     }
 
-    visited := make(map[int]bool)
-    visitedResults := make(map[int]bool)
-    candidates := &nodeDistHeap{}
-    resultSet := &nodeDistHeap{}
+    visited := getVisitedMap()
+    defer putVisitedMap(visited)
+
+    visitedResults := getVisitedMap()
+    defer putVisitedMap(visitedResults)
+
+    candidates := getNodeDistHeap()
+    defer putNodeDistHeap(candidates)
+
+    resultSet := getNodeDistHeap()
+    defer putNodeDistHeap(resultSet)
+
     heap.Init(candidates)
     heap.Init(resultSet)
 
