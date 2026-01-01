@@ -46,6 +46,9 @@ type HNSW struct {
 
 // New creates a new HNSW index
 func New(dim, m, mmax, efConstruction int, distanceFunc DistanceFunc) *HNSW {
+    if dim <= 0 || m <= 0 || mmax <= 0 || efConstruction <= 0 {
+        panic("invalid HNSW parameters: all dimensions and size parameters must be positive")
+    }
     return &HNSW{
         Nodes:          make(map[int]*Node),
         MaxLevel:       0,
@@ -60,12 +63,24 @@ func New(dim, m, mmax, efConstruction int, distanceFunc DistanceFunc) *HNSW {
 
 // Insert adds a new vector to the index
 func (h *HNSW) Insert(id int, vec Vector) {
+    if len(vec) != h.Dim {
+        panic("vector dimension mismatch")
+    }
+
     h.mutex.Lock()
     defer h.mutex.Unlock()
 
     // Clear deleted status if it exists
     if h.deletedNodes[id] {
         delete(h.deletedNodes, id)
+    }
+
+    // If node already exists, we must delete it first to maintain graph integrity
+    if _, exists := h.Nodes[id]; exists {
+        // Unlock temporarily to avoid deadlock as Delete acquires Lock
+        h.mutex.Unlock()
+        h.Delete(id)
+        h.mutex.Lock()
     }
 
     newNode := &Node{
@@ -632,6 +647,10 @@ func (h *HNSW) Search(vec Vector, k int) []int {
 
 // SearchWithConfig finds k nearest neighbors with custom config
 func (h *HNSW) SearchWithConfig(vec Vector, k int, config SearchConfig) []int {
+    if len(vec) != h.Dim {
+        panic("vector dimension mismatch")
+    }
+
     h.mutex.RLock()
     defer h.mutex.RUnlock()
 
