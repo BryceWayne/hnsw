@@ -357,22 +357,20 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
         return []*Node{entryPoint}
     }
 
-    visited := sync.Map{}
-    visitedResults := sync.Map{} // Track visited nodes that are potential results
+    visited := make(map[int]bool)
+    visitedResults := make(map[int]bool) // Track visited nodes that are potential results
 
     // Initialize candidates with entry point
     candidates := []*Node{entryPoint}
-    visited.Store(entryPoint.ID, true)
+    visited[entryPoint.ID] = true
 
     // Initialize result set
     results := []*Node{entryPoint}
-    visitedResults.Store(entryPoint.ID, true)
+    visitedResults[entryPoint.ID] = true
 
     // Calculate distance to entry point
     entryDist := h.DistanceFunc(entryPoint.Vector, vec)
     furthestDist := entryDist
-
-    var resultsMutex sync.Mutex
 
     for len(candidates) > 0 {
         // Get current candidate
@@ -394,16 +392,17 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
                 }
 
                 // Skip if already visited
-                if _, seen := visited.LoadOrStore(neighbor.ID, true); seen {
+                if visited[neighbor.ID] {
                     continue
                 }
+                visited[neighbor.ID] = true
 
                 neighborDist := h.DistanceFunc(neighbor.Vector, vec)
 
                 // Update results if this is a better candidate
-                resultsMutex.Lock()
                 if len(results) < ef || neighborDist < furthestDist {
-                    if _, seen := visitedResults.LoadOrStore(neighbor.ID, true); !seen {
+                    if !visitedResults[neighbor.ID] {
+                        visitedResults[neighbor.ID] = true
                         results = append(results, neighbor)
                     }
 
@@ -420,7 +419,6 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
                     // Update furthest distance
                     furthestDist = h.DistanceFunc(results[len(results)-1].Vector, vec)
                 }
-                resultsMutex.Unlock()
 
                 // Add to candidates if it could lead to better results
                 candidates = append(candidates, neighbor)
@@ -449,8 +447,8 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
         return []*Node{entryPoint}
     }
 
-    visited := sync.Map{}
-    visitedResults := sync.Map{}
+    visited := make(map[int]bool)
+    visitedResults := make(map[int]bool)
     candidates := &nodeDistHeap{}
     resultSet := &nodeDistHeap{}
     heap.Init(candidates)
@@ -459,8 +457,8 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
     entryDist := h.DistanceFunc(entryPoint.Vector, vec)
     heap.Push(candidates, &nodeDist{entryPoint, entryDist})
     heap.Push(resultSet, &nodeDist{entryPoint, entryDist})
-    visited.Store(entryPoint.ID, true)
-    visitedResults.Store(entryPoint.ID, true)
+    visited[entryPoint.ID] = true
+    visitedResults[entryPoint.ID] = true
 
     // Process in batches
     batchSize := 256
@@ -478,7 +476,8 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
             if level < len(node.Levels) && node.Levels[level] != nil {
                 for _, neighbor := range node.Levels[level].Connections {
                     if neighbor != nil {
-                        if _, seen := visited.LoadOrStore(neighbor.ID, true); !seen {
+                        if !visited[neighbor.ID] {
+                            visited[neighbor.ID] = true
                             neighbors = append(neighbors, neighbor)
                         }
                     }
@@ -501,7 +500,8 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
             for i, dist := range distances {
                 node := neighbors[i]
                 if resultSet.Len() < ef || dist < (*resultSet)[0].dist {
-                    if _, seen := visitedResults.LoadOrStore(node.ID, true); !seen {
+                    if !visitedResults[node.ID] {
+                        visitedResults[node.ID] = true
                         heap.Push(candidates, &nodeDist{node, dist})
                         heap.Push(resultSet, &nodeDist{node, dist})
                         if resultSet.Len() > ef {
