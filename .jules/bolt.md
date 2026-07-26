@@ -1,0 +1,3 @@
+## 2024-05-24 - Slice Hoisting inside Hot Paths
+**Learning:** In Go, memory allocations within a tight inner loop (e.g. `searchLayerParallel`) can create huge GC overhead even when overall heap space is not fully constrained. Slices can be easily allocated outside the hot loop and reused via `slice = slice[:0]`.
+**Action:** Always inspect the tightest loops for dynamically sized slices or buffers. Instead of fresh allocations, hoist the `make` call outside and re-slice for each iteration. For slices where capacity can grow, manually track capacity and only reallocate `if cap(slice) < required_len`.
