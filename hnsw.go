@@ -473,10 +473,14 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
 
     // Process in batches
     batchSize := 256
+    neighbors := make([]*Node, 0, batchSize*h.M)
+    candidateNodes := make([]*Node, 0, batchSize)
+    var flatData []float64
+
     for candidates.Len() > 0 {
         // Collect candidates and their neighbors
-        neighbors := make([]*Node, 0, batchSize*h.M)
-        candidateNodes := make([]*Node, 0, batchSize)
+        neighbors = neighbors[:0]
+        candidateNodes = candidateNodes[:0]
 
         // Gather neighbors from current batch of candidates
         for i := 0; i < batchSize && candidates.Len() > 0; i++ {
@@ -500,7 +504,11 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
         // Calculate distances in batch
         if len(neighbors) > 0 {
             dim := len(vec)
-            flatData := make([]float64, len(neighbors)*dim)
+            reqLen := len(neighbors) * dim
+            if cap(flatData) < reqLen {
+                flatData = make([]float64, reqLen)
+            }
+            flatData = flatData[:reqLen]
             for i, n := range neighbors {
                 copy(flatData[i*dim:], n.Vector)
             }
