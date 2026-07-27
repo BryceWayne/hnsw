@@ -49,3 +49,40 @@ func putNodeDistHeap(h *nodeDistHeap) {
 	resetNodeDistHeap(h)
 	nodeDistHeapPool.Put(h)
 }
+
+var floatSlicePool = sync.Pool{
+	New: func() interface{} {
+		s := make([]float64, 0, 4096)
+		return &s
+	},
+}
+
+func getFloatSlice() *[]float64 {
+	return floatSlicePool.Get().(*[]float64)
+}
+
+func putFloatSlice(s *[]float64) {
+	old := *s
+	*s = old[:0]
+	floatSlicePool.Put(s)
+}
+
+var nodeSlicePool = sync.Pool{
+	New: func() interface{} {
+		s := make([]*Node, 0, 1024)
+		return &s
+	},
+}
+
+func getNodeSlice() *[]*Node {
+	return nodeSlicePool.Get().(*[]*Node)
+}
+
+func putNodeSlice(s *[]*Node) {
+	old := *s
+	for i := range old {
+		old[i] = nil
+	}
+	*s = old[:0]
+	nodeSlicePool.Put(s)
+}
