@@ -473,9 +473,25 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
 
     // Process in batches
     batchSize := 256
-    neighbors := make([]*Node, 0, batchSize*h.M)
-    candidateNodes := make([]*Node, 0, batchSize)
-    var flatData []float64
+
+    // Bolt: Use object pooling for slices to avoid allocations in search hot path
+    neighborsPtr := getNodeSlice()
+    neighbors := (*neighborsPtr)[:0]
+
+    candidateNodesPtr := getNodeSlice()
+    candidateNodes := (*candidateNodesPtr)[:0]
+
+    flatDataPtr := getFloatSlice()
+    flatData := (*flatDataPtr)[:0]
+
+    defer func() {
+        *neighborsPtr = neighbors
+        putNodeSlice(neighborsPtr)
+        *candidateNodesPtr = candidateNodes
+        putNodeSlice(candidateNodesPtr)
+        *flatDataPtr = flatData
+        putFloatSlice(flatDataPtr)
+    }()
 
     for candidates.Len() > 0 {
         // Collect candidates and their neighbors
