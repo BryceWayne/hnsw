@@ -360,16 +360,12 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
     visited := getVisitedMap()
     defer putVisitedMap(visited)
 
-    visitedResults := getVisitedMap() // Track visited nodes that are potential results
-    defer putVisitedMap(visitedResults)
-
     // Initialize candidates with entry point
     candidates := []*Node{entryPoint}
     visited[entryPoint.ID] = true
 
     // Initialize result set
     results := []*Node{entryPoint}
-    visitedResults[entryPoint.ID] = true
 
     // Calculate distance to entry point
     entryDist := h.DistanceFunc(entryPoint.Vector, vec)
@@ -404,10 +400,8 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
 
                 // Update results if this is a better candidate
                 if len(results) < ef || neighborDist < furthestDist {
-                    if !visitedResults[neighbor.ID] {
-                        visitedResults[neighbor.ID] = true
-                        results = append(results, neighbor)
-                    }
+                    // Bolt: removed redundant visitedResults tracking since visited map already ensures uniqueness
+                    results = append(results, neighbor)
 
                     // Sort results by distance
                     sort.Slice(results, func(i, j int) bool {
@@ -453,9 +447,6 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
     visited := getVisitedMap()
     defer putVisitedMap(visited)
 
-    visitedResults := getVisitedMap()
-    defer putVisitedMap(visitedResults)
-
     candidates := getNodeDistHeap()
     defer putNodeDistHeap(candidates)
 
@@ -469,7 +460,6 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
     heap.Push(candidates, &nodeDist{entryPoint, entryDist})
     heap.Push(resultSet, &nodeDist{entryPoint, entryDist})
     visited[entryPoint.ID] = true
-    visitedResults[entryPoint.ID] = true
 
     // Process in batches
     batchSize := 256
@@ -535,13 +525,11 @@ func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level i
             for i, dist := range distances {
                 node := neighbors[i]
                 if resultSet.Len() < ef || dist < (*resultSet)[0].dist {
-                    if !visitedResults[node.ID] {
-                        visitedResults[node.ID] = true
-                        heap.Push(candidates, &nodeDist{node, dist})
-                        heap.Push(resultSet, &nodeDist{node, dist})
-                        if resultSet.Len() > ef {
-                            heap.Pop(resultSet)
-                        }
+                    // Bolt: removed redundant visitedResults tracking since visited map already ensures uniqueness
+                    heap.Push(candidates, &nodeDist{node, dist})
+                    heap.Push(resultSet, &nodeDist{node, dist})
+                    if resultSet.Len() > ef {
+                        heap.Pop(resultSet)
                     }
                 }
             }
