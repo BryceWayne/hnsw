@@ -360,21 +360,21 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
     visited := getVisitedMap()
     defer putVisitedMap(visited)
 
+    // Initialize candidates with entry point
+    candidates := []*Node{entryPoint}
+    visited[entryPoint.ID] = true
+
+    // Initialize result set
+    results := []*Node{entryPoint}
+
     // Calculate distance to entry point
     entryDist := h.DistanceFunc(entryPoint.Vector, vec)
     furthestDist := entryDist
 
-    // Use nodeDist to cache distance calculations, avoiding redundant h.DistanceFunc calls
-    candidates := []nodeDist{{node: entryPoint, dist: entryDist}}
-    visited[entryPoint.ID] = true
-
-    // Initialize result set
-    results := []nodeDist{{node: entryPoint, dist: entryDist}}
-
     for len(candidates) > 0 {
         // Get current candidate
-        currentNode := candidates[0].node
-        currentDist := candidates[0].dist
+        currentNode := candidates[0]
+        currentDist := h.DistanceFunc(currentNode.Vector, vec)
         candidates = candidates[1:]
 
         // If we've found something further than our worst candidate
@@ -401,11 +401,11 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
                 // Update results if this is a better candidate
                 if len(results) < ef || neighborDist < furthestDist {
                     // Bolt: removed redundant visitedResults tracking since visited map already ensures uniqueness
-                    results = append(results, nodeDist{node: neighbor, dist: neighborDist})
+                    results = append(results, neighbor)
 
                     // Sort results by distance
                     sort.Slice(results, func(i, j int) bool {
-                        return results[i].dist < results[j].dist
+                        return h.DistanceFunc(results[i].Vector, vec) < h.DistanceFunc(results[j].Vector, vec)
                     })
 
                     // Keep only ef closest results
@@ -414,26 +414,22 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
                     }
 
                     // Update furthest distance
-                    furthestDist = results[len(results)-1].dist
+                    furthestDist = h.DistanceFunc(results[len(results)-1].Vector, vec)
                 }
 
                 // Add to candidates if it could lead to better results
-                candidates = append(candidates, nodeDist{node: neighbor, dist: neighborDist})
+                candidates = append(candidates, neighbor)
             }
         }
         currentNode.RUnlock()
 
         // Sort candidates by distance
         sort.Slice(candidates, func(i, j int) bool {
-            return candidates[i].dist < candidates[j].dist
+            return h.DistanceFunc(candidates[i].Vector, vec) < h.DistanceFunc(candidates[j].Vector, vec)
         })
     }
 
-    finalResults := make([]*Node, len(results))
-    for i, r := range results {
-        finalResults[i] = r.node
-    }
-    return finalResults
+    return results
 }
 
 /*
