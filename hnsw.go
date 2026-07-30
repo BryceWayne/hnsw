@@ -684,24 +684,24 @@ func (h *HNSW) SearchWithConfig(vec Vector, k int, config SearchConfig) []int {
         candidates = h.searchLayer(currentNode, vec, k*2, 0)
     }
 
-    // Filter deleted nodes
-    validCandidates := make([]*Node, 0, len(candidates))
+    // Filter deleted nodes and cache distances to avoid redundant computations in sort
+    validCandidates := make([]nodeDist, 0, len(candidates))
     for _, node := range candidates {
         if !h.deletedNodes[node.ID] {
-            validCandidates = append(validCandidates, node)
+            validCandidates = append(validCandidates, nodeDist{node, h.DistanceFunc(node.Vector, vec)})
         }
     }
 
     // Sort by distance
     sort.Slice(validCandidates, func(i, j int) bool {
-        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
+        return validCandidates[i].dist < validCandidates[j].dist
     })
 
     // Return k closest
     count := min(k, len(validCandidates))
     result := make([]int, count)
     for i := 0; i < count; i++ {
-        result[i] = validCandidates[i].ID
+        result[i] = validCandidates[i].node.ID
     }
 
     return result
