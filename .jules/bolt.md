@@ -9,3 +9,7 @@
 ## 2026-07-28 - Redundant Tracking Sets in Graph Search
 **Learning:** During HNSW graph search operations (e.g. `searchLayer`, `searchLayerParallel`), keeping a separate `visitedResults` map to track nodes added to the result set is often completely redundant if there is already a primary `visited` map guaranteeing that each neighbor is only explored and evaluated once. Re-adding the same node to the heap multiple times is implicitly prevented because the node is only ever processed once from its parent's neighbor list.
 **Action:** When auditing search logic or BFS/DFS traversals for performance, always double-check if multiple "seen" sets can be collapsed into one. Eliminating redundant sets saves significant overhead (e.g., sync.Pool map allocations, clearing maps, and multiple map lookups per query).
+
+## 2026-08-02 - Caching Expensive Computation in Sort Closures
+**Learning:** During HNSW graph search operations (e.g. `searchLayer` and `SearchWithConfig`), the distance function (which performs mathematical vector operations) was repeatedly invoked inside `sort.Slice` comparison closures. Because `sort.Slice` can call its less function $O(N \log N)$ times, this resulted in massive redundant computations of distances that hadn't changed.
+**Action:** When sorting elements based on the result of an expensive function, pre-compute and cache the results in a struct (e.g., `nodeDist{node, dist}`) before sorting. Then, map back to the original slice format if needed. This changes the computationally heavy operations from $O(N \log N)$ to $O(N)$.
