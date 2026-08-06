@@ -1,7 +1,7 @@
 #include "textflag.h"
 
 // func euclideanAVX2(v1, v2 []float64) float64
-TEXT ·euclideanAVX2(SB), NOSPLIT, $0-48
+TEXT ·euclideanAVX2(SB), NOSPLIT, $0-56
     MOVQ    v1+0(FP), SI     // v1 slice
     MOVQ    v1_len+8(FP), BX // length
     MOVQ    v2+24(FP), DI    // v2 slice
@@ -29,12 +29,12 @@ done_loop:
     ADDSD   X1, X0
     SQRTSD  X0, X0          // sqrt of sum
     
-    MOVSD   X0, ret+40(FP)
+    MOVSD   X0, ret+48(FP)
     VZEROUPPER
     RET
 
 // func cosineAVX2(v1, v2 []float64) float64
-TEXT ·cosineAVX2(SB), NOSPLIT, $0-48
+TEXT ·cosineAVX2(SB), NOSPLIT, $0-56
     MOVQ    v1+0(FP), SI     // v1 slice
     MOVQ    v1_len+8(FP), BX // length
     MOVQ    v2+24(FP), DI    // v2 slice
@@ -83,7 +83,7 @@ done_cosine:
     MOVSD   $1.0, X1
     SUBSD   X0, X1           // 1 - dot/sqrt(norm1*norm2)
     
-    MOVSD   X1, ret+40(FP)
+    MOVSD   X1, ret+48(FP)
     VZEROUPPER
     RET
 
@@ -137,7 +137,7 @@ done:
     RET
 
 // func BatchEuclideanAVX2Flat(query []float64, flatVectors []float64, dim int, results []float64)
-TEXT ·BatchEuclideanAVX2Flat(SB), NOSPLIT, $0-56
+TEXT ·BatchEuclideanAVX2Flat(SB), NOSPLIT, $0-80
     MOVQ query+0(FP), SI           // query ptr
     MOVQ flatVectors+24(FP), DI    // flatVectors ptr
     MOVQ dim+48(FP), R8            // dimension
