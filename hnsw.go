@@ -360,21 +360,22 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
     visited := getVisitedMap()
     defer putVisitedMap(visited)
 
-    // Initialize candidates with entry point
-    candidates := []*Node{entryPoint}
+    // Initialize visited set
     visited[entryPoint.ID] = true
-
-    // Initialize result set
-    results := []*Node{entryPoint}
 
     // Calculate distance to entry point
     entryDist := h.DistanceFunc(entryPoint.Vector, vec)
     furthestDist := entryDist
 
+    // Bolt: Cache distances to avoid redundant h.DistanceFunc calls during sort.Slice
+    candidates := []nodeDist{{entryPoint, entryDist}}
+    results := []nodeDist{{entryPoint, entryDist}}
+
     for len(candidates) > 0 {
         // Get current candidate
-        currentNode := candidates[0]
-        currentDist := h.DistanceFunc(currentNode.Vector, vec)
+        current := candidates[0]
+        currentNode := current.node
+        currentDist := current.dist
         candidates = candidates[1:]
 
         // If we've found something further than our worst candidate
@@ -401,11 +402,11 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
                 // Update results if this is a better candidate
                 if len(results) < ef || neighborDist < furthestDist {
                     // Bolt: removed redundant visitedResults tracking since visited map already ensures uniqueness
-                    results = append(results, neighbor)
+                    results = append(results, nodeDist{neighbor, neighborDist})
 
-                    // Sort results by distance
+                    // Sort results by cached distance
                     sort.Slice(results, func(i, j int) bool {
-                        return h.DistanceFunc(results[i].Vector, vec) < h.DistanceFunc(results[j].Vector, vec)
+                        return results[i].dist < results[j].dist
                     })
 
                     // Keep only ef closest results
@@ -414,22 +415,26 @@ func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*N
                     }
 
                     // Update furthest distance
-                    furthestDist = h.DistanceFunc(results[len(results)-1].Vector, vec)
+                    furthestDist = results[len(results)-1].dist
                 }
 
                 // Add to candidates if it could lead to better results
-                candidates = append(candidates, neighbor)
+                candidates = append(candidates, nodeDist{neighbor, neighborDist})
             }
         }
         currentNode.RUnlock()
 
-        // Sort candidates by distance
+        // Sort candidates by cached distance
         sort.Slice(candidates, func(i, j int) bool {
-            return h.DistanceFunc(candidates[i].Vector, vec) < h.DistanceFunc(candidates[j].Vector, vec)
+            return candidates[i].dist < candidates[j].dist
         })
     }
 
-    return results
+    finalResults := make([]*Node, len(results))
+    for i, r := range results {
+        finalResults[i] = r.node
+    }
+    return finalResults
 }
 
 /*
@@ -602,7 +607,7 @@ func (h *HNSW) addConnection(node, newNode *Node, level int) {
     newDist := h.DistanceFunc(node.Vector, newNode.Vector)
     conns = append(conns, connDist{newNode, newDist})
 
-    // Sort by distance
+    // Sort by distance (Bolt: distance is already cached in connDist)
     sort.Slice(conns, func(i, j int) bool {
         return conns[i].distance < conns[j].distance
     })
@@ -684,24 +689,25 @@ func (h *HNSW) SearchWithConfig(vec Vector, k int, config SearchConfig) []int {
         candidates = h.searchLayer(currentNode, vec, k*2, 0)
     }
 
-    // Filter deleted nodes
-    validCandidates := make([]*Node, 0, len(candidates))
+    // Filter deleted nodes and cache distances
+    // Bolt: Cache distances to avoid redundant h.DistanceFunc calls during sort.Slice
+    validCandidates := make([]nodeDist, 0, len(candidates))
     for _, node := range candidates {
         if !h.deletedNodes[node.ID] {
-            validCandidates = append(validCandidates, node)
+            validCandidates = append(validCandidates, nodeDist{node, h.DistanceFunc(node.Vector, vec)})
         }
     }
 
-    // Sort by distance
+    // Sort by cached distance
     sort.Slice(validCandidates, func(i, j int) bool {
-        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
+        return validCandidates[i].dist < validCandidates[j].dist
     })
 
     // Return k closest
     count := min(k, len(validCandidates))
     result := make([]int, count)
     for i := 0; i < count; i++ {
-        result[i] = validCandidates[i].ID
+        result[i] = validCandidates[i].node.ID
     }
 
     return result

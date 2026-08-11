@@ -9,3 +9,7 @@
 ## 2026-07-28 - Redundant Tracking Sets in Graph Search
 **Learning:** During HNSW graph search operations (e.g. `searchLayer`, `searchLayerParallel`), keeping a separate `visitedResults` map to track nodes added to the result set is often completely redundant if there is already a primary `visited` map guaranteeing that each neighbor is only explored and evaluated once. Re-adding the same node to the heap multiple times is implicitly prevented because the node is only ever processed once from its parent's neighbor list.
 **Action:** When auditing search logic or BFS/DFS traversals for performance, always double-check if multiple "seen" sets can be collapsed into one. Eliminating redundant sets saves significant overhead (e.g., sync.Pool map allocations, clearing maps, and multiple map lookups per query).
+
+## 2024-08-11 - Cache distances in HNSW search
+**Learning:** During graph search and base layer traversal in HNSW, sort operations can cause hundreds or thousands of redundant `DistanceFunc` calls, significantly degrading performance, especially since vector distances are expensive. Caching distance computations alongside the node pointer using a struct (like `nodeDist`) enables much faster array sorting.
+**Action:** Always prefer pairing node references with their precomputed distances when passing collections into sorting algorithms or priority queues in vector search logic.
