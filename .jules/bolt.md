@@ -9,3 +9,7 @@
 ## 2026-07-28 - Redundant Tracking Sets in Graph Search
 **Learning:** During HNSW graph search operations (e.g. `searchLayer`, `searchLayerParallel`), keeping a separate `visitedResults` map to track nodes added to the result set is often completely redundant if there is already a primary `visited` map guaranteeing that each neighbor is only explored and evaluated once. Re-adding the same node to the heap multiple times is implicitly prevented because the node is only ever processed once from its parent's neighbor list.
 **Action:** When auditing search logic or BFS/DFS traversals for performance, always double-check if multiple "seen" sets can be collapsed into one. Eliminating redundant sets saves significant overhead (e.g., sync.Pool map allocations, clearing maps, and multiple map lookups per query).
+
+## 2024-08-12 - Redundant sort in SearchWithConfig
+**Learning:** In `SearchWithConfig`, the array `candidates` returned by `searchLayer` and `searchLayerParallel` are already sorted by distance (via `heap.Pop` or `sort.Slice` internally). There's no need to sort the `validCandidates` array again before taking the top `k` elements.
+**Action:** When filtering a sorted slice for deleted items, the relative order is maintained. Avoid calling `sort.Slice` on already sorted slices, as it's O(N log N) with heavy distance function evaluation overhead.
