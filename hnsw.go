@@ -692,12 +692,7 @@ func (h *HNSW) SearchWithConfig(vec Vector, k int, config SearchConfig) []int {
         }
     }
 
-    // Sort by distance
-    sort.Slice(validCandidates, func(i, j int) bool {
-        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
-    })
-
-    // Return k closest
+    // Return k closest (candidates are already sorted from searchLayer/searchLayerParallel)
     count := min(k, len(validCandidates))
     result := make([]int, count)
     for i := 0; i < count; i++ {
