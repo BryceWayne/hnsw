@@ -9,3 +9,7 @@
 ## 2026-07-28 - Redundant Tracking Sets in Graph Search
 **Learning:** During HNSW graph search operations (e.g. `searchLayer`, `searchLayerParallel`), keeping a separate `visitedResults` map to track nodes added to the result set is often completely redundant if there is already a primary `visited` map guaranteeing that each neighbor is only explored and evaluated once. Re-adding the same node to the heap multiple times is implicitly prevented because the node is only ever processed once from its parent's neighbor list.
 **Action:** When auditing search logic or BFS/DFS traversals for performance, always double-check if multiple "seen" sets can be collapsed into one. Eliminating redundant sets saves significant overhead (e.g., sync.Pool map allocations, clearing maps, and multiple map lookups per query).
+
+## 2026-08-14 - Redundant Sorting of Already Sorted Candidate Arrays
+**Learning:** In Go HNSW implementations, filtering a sorted slice for deleted items maintains the relative order. Avoid redundant `sort.Slice` calls (which carry heavy `O(N log N)` distance calculation overhead) on already-sorted candidates returned by methods like `searchLayer`.
+**Action:** When filtering result sets from graph traversals or base layer search functions, trust the sorted order if the underlying function promises to return it. Do not blindly invoke `sort.Slice` as a safety net, as it severely impacts query throughput by unnecessarily repeating heavy distance math operations.
