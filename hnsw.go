@@ -1,682 +1,1120 @@
-// hnsw.go
 package hnsw
 
 import (
-    "container/heap"
-    "encoding/gob"
-    "math/rand"
-    "os"
-    "runtime"
-    "sort"
-    "sync"
+	"math"
+	"math/rand"
+	"sort"
+	"sync"
+	"sync/atomic"
+	"time"
+	"unsafe"
 )
 
-func init() {
-    gob.Register(&serialNode{})
-    gob.Register(&Level{})
-    gob.Register(Vector{})
-    gob.Register(&SerializableHNSW{})
+const (
+	chunkBits    = 8
+	chunkSize    = 1 << chunkBits // 256
+	chunkMask    = chunkSize - 1
+	dirL2Bits    = 9
+	dirL2Size    = 1 << dirL2Bits // 512
+	dirL2Mask    = dirL2Size - 1
+	dirL1Size    = 512
+	nodeLockSize = 4096
+	nodeLockMask = nodeLockSize - 1
+	readStripes  = 64
+	readMask     = readStripes - 1
+	maxNodeLevel = 32
+	invalidID    = uint32(math.MaxUint32)
+	emptyEntry   = uint64(math.MaxUint64)
+)
+
+type paddedRWMutex struct {
+	mu sync.RWMutex
+	_  [64 - unsafe.Sizeof(sync.RWMutex{})%64]byte
 }
 
-// SerializableHNSW represents the serializable form of HNSW
-type SerializableHNSW struct {
-    Nodes          map[int]*serialNode
-    EntryPointID   int
-    MaxLevel       int
-    M              int
-    Mmax           int
-    EfConstruction int
-    Dim            int
-    DeletedNodes   map[int]bool
+type dirPage[K comparable] struct {
+	chunks [dirL2Size]atomic.Pointer[arenaChunk[K]]
 }
 
-// HNSW represents the hierarchical navigable small world graph
-type HNSW struct {
-    Nodes          map[int]*Node
-    EntryPoint     *Node
-    MaxLevel       int
-    M              int
-    Mmax           int
-    EfConstruction int
-    Dim            int
-    DistanceFunc   DistanceFunc
-    mutex          sync.RWMutex
-    deletedNodes   map[int]bool
+type arenaChunk[K comparable] struct {
+	vecs        []float32
+	invNorms    []float32
+	intToExt    []K
+	deleted     [chunkSize / 64]atomic.Uint64
+	l0Edges     []uint32
+	l0Count     [chunkSize]uint16
+	upperLevels [chunkSize][][]uint32
+	maxLevels   [chunkSize]uint8
 }
 
-// New creates a new HNSW index
-func New(dim, m, mmax, efConstruction int, distanceFunc DistanceFunc) *HNSW {
-    return &HNSW{
-        Nodes:          make(map[int]*Node),
-        MaxLevel:       0,
-        M:              m,
-        Mmax:           mmax,
-        EfConstruction: efConstruction,
-        Dim:            dim,
-        DistanceFunc:   distanceFunc,
-        deletedNodes:   make(map[int]bool),
-    }
+// SearchResult represents a single nearest-neighbor match returned by Search, SearchFilter, or SearchBatch.
+type SearchResult[K comparable] struct {
+	// ID is the external key associated with the matched vector.
+	ID K
+	// Distance is the distance from the query vector according to the index metric.
+	Distance float32
 }
 
-// Insert adds a new vector to the index
-func (h *HNSW) Insert(id int, vec Vector) {
-    h.mutex.Lock()
-    defer h.mutex.Unlock()
-
-    newNode := &Node{
-        ID:     id,
-        Vector: vec,
-        Levels: make([]*Level, 1),
-    }
-    newNode.Levels[0] = &Level{Connections: make([]*Node, 0)}
-
-    if len(h.Nodes) == 0 {
-        h.EntryPoint = newNode
-        h.Nodes[id] = newNode
-        return
-    }
-
-    // Find entry point
-    currentNode := h.EntryPoint
-    currentDist := h.DistanceFunc(currentNode.Vector, vec)
-
-    // Search through existing layers
-    maxLevel := min(h.MaxLevel, len(currentNode.Levels)-1)
-    for level := maxLevel; level >= 0; level-- {
-        changed := true
-        for changed {
-            changed = false
-            currentNode.RLock()
-            if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
-                for _, neighbor := range currentNode.Levels[level].Connections {
-                    if neighbor == nil {
-                        continue
-                    }
-                    neighborDist := h.DistanceFunc(neighbor.Vector, vec)
-                    if neighborDist < currentDist {
-                        currentNode.RUnlock()
-                        currentNode = neighbor
-                        currentDist = neighborDist
-                        changed = true
-                        break
-                    }
-                }
-            }
-            if !changed {
-                currentNode.RUnlock()
-            }
-        }
-    }
-
-    // Generate random level
-    newLevel := h.randomLevel()
-    if newLevel > h.MaxLevel {
-        h.MaxLevel = newLevel
-    }
-
-    // Initialize all levels
-    for i := len(newNode.Levels); i <= newLevel; i++ {
-        newNode.Levels = append(newNode.Levels, &Level{
-            Connections: make([]*Node, 0),
-        })
-    }
-
-    // Build connections for each level
-    for level := 0; level <= newLevel; level++ {
-        neighbors := h.searchLayer(currentNode, vec, h.M, level)
-        if level < len(newNode.Levels) {
-            newNode.Levels[level].Connections = neighbors
-            for _, neighbor := range neighbors {
-                h.addConnection(neighbor, newNode, level)
-            }
-        }
-    }
-
-    h.Nodes[id] = newNode
+// Item pairs an external key with a vector for batch insertion via InsertBatch.
+type Item[K comparable] struct {
+	// ID is the external key for the vector.
+	ID K
+	// Vector is the float32 embedding slice whose length must match the index dimension.
+	Vector []float32
 }
 
-// Search finds k nearest neighbors for the given vector
-// func (h *HNSW) Search(vec Vector, k int) []int {
-//     h.mutex.RLock()
-//     defer h.mutex.RUnlock()
-
-//     if len(h.Nodes) == 0 {
-//         return nil
-//     }
-
-//     currentNode := h.EntryPoint
-//     if currentNode == nil {
-//         return []int{}
-//     }
-
-//     // Search through layers
-//     for level := h.MaxLevel; level > 0; level-- {
-//         changed := true
-//         for changed {
-//             changed = false
-//             currentNode.RLock()
-//             if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
-//                 for _, neighbor := range currentNode.Levels[level].Connections {
-//                     if h.DistanceFunc(neighbor.Vector, vec) < h.DistanceFunc(currentNode.Vector, vec) {
-//                         currentNode.RUnlock()
-//                         currentNode = neighbor
-//                         changed = true
-//                         break
-//                     }
-//                 }
-//             }
-//             if !changed {
-//                 currentNode.RUnlock()
-//             }
-//         }
-//     }
-
-//     // Get candidates from bottom layer
-//     candidates := h.searchLayer(currentNode, vec, h.EfConstruction, 0)
-
-//     // Filter deleted nodes and sort by distance
-//     validCandidates := make([]*Node, 0, len(candidates))
-//     for _, node := range candidates {
-//         if !h.deletedNodes[node.ID] {
-//             validCandidates = append(validCandidates, node)
-//         }
-//     }
-
-//     if len(validCandidates) == 0 {
-//         return []int{}
-//     }
-
-//     // Sort remaining candidates
-//     sort.Slice(validCandidates, func(i, j int) bool {
-//         return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
-//     })
-
-//     // Return k closest
-//     count := min(k, len(validCandidates))
-//     result := make([]int, count)
-//     for i := 0; i < count; i++ {
-//         result[i] = validCandidates[i].ID
-//     }
-
-//     return result
-// }
-
-// Delete removes a vector from the index
-func (h *HNSW) Delete(id int) {
-    h.mutex.Lock()
-    defer h.mutex.Unlock()
-
-    if _, exists := h.Nodes[id]; !exists {
-        return
-    }
-
-    h.deletedNodes[id] = true
-    delete(h.Nodes, id)
-
-    if h.EntryPoint.ID == id {
-        for _, node := range h.Nodes {
-            h.EntryPoint = node
-            break
-        }
-    }
+// IndexStats provides a point-in-time snapshot of index capacity, configuration, and memory usage.
+type IndexStats struct {
+	// Len is the number of live (non-deleted) vectors in the index.
+	Len int
+	// Deleted is the number of tombstoned slots awaiting Compact.
+	Deleted int
+	// Capacity is the total number of allocated vector slots across active arena chunks.
+	Capacity int
+	// Dim is the fixed vector dimensionality of the index.
+	Dim int
+	// MaxLevel is the current maximum HNSW layer level (0 when empty or single-layer).
+	MaxLevel int
+	// EntryPointSet reports whether the index currently has an active entry point.
+	EntryPointSet bool
+	// M is the configured target connections per upper-layer node.
+	M int
+	// Mmax is the configured maximum connections per layer-0 node.
+	Mmax int
+	// EfConstruction is the search beam width used during insertion.
+	EfConstruction int
+	// EfSearch is the default search beam width used during queries.
+	EfSearch int
+	// Metric is the configured distance metric.
+	Metric Metric
+	// Heuristic reports whether Algorithm 4 neighbor selection is enabled.
+	Heuristic bool
+	// MemoryBytes is the estimated memory footprint of allocated arena slabs and graph structures in bytes.
+	MemoryBytes int64
 }
 
-// Save persists the index to a file
-func (h *HNSW) Save(filename string) error {
-    h.mutex.RLock()
-    defer h.mutex.RUnlock()
+// Index is a concurrency-safe, generic Hierarchical Navigable Small World (HNSW) vector index.
+type Index[K comparable] struct {
+	dim            int
+	m              int
+	mmax           int
+	efConstruction int
+	efSearch       int
+	mL             float64
+	metric         Metric
+	customDist     DistanceFunc
+	heuristic      bool
+	seed           int64
 
-    serializable := &SerializableHNSW{
-        Nodes:          make(map[int]*serialNode),
-        MaxLevel:       h.MaxLevel,
-        M:              h.M,
-        Mmax:           h.Mmax,
-        EfConstruction: h.EfConstruction,
-        Dim:            h.Dim,
-        DeletedNodes:   h.deletedNodes,
-    }
+	dir            [dirL1Size]atomic.Pointer[dirPage[K]]
+	extMu          sync.RWMutex
+	extToInt       map[K]uint32
+	nextID         atomic.Uint32
+	liveCount      atomic.Int64
+	tombstoneCount atomic.Int64
+	entryState     atomic.Uint64
 
-    if h.EntryPoint != nil {
-        serializable.EntryPointID = h.EntryPoint.ID
-    }
+	writeGate   sync.RWMutex
+	readStripes [readStripes]paddedRWMutex
+	nodeLocks   [nodeLockSize]sync.RWMutex
 
-    // Convert nodes with serializable levels
-    for id, node := range h.Nodes {
-        sNode := &serialNode{
-            ID:       node.ID,
-            Vector:   node.Vector,
-            MaxLevel: node.MaxLevel,
-            Levels:   make([]*serialLevel, len(node.Levels)),
-        }
-
-        // Convert each level's connections to IDs
-        for i, level := range node.Levels {
-            sLevel := &serialLevel{
-                ConnectionIDs: make([]int, len(level.Connections)),
-            }
-            for j, conn := range level.Connections {
-                sLevel.ConnectionIDs[j] = conn.ID
-            }
-            sNode.Levels[i] = sLevel
-        }
-
-        serializable.Nodes[id] = sNode
-    }
-
-    file, err := os.Create(filename)
-    if err != nil {
-        return err
-    }
-    defer file.Close()
-
-    encoder := gob.NewEncoder(file)
-    return encoder.Encode(serializable)
+	rngMu       sync.Mutex
+	rng         *rand.Rand
+	stripeSeq   atomic.Uint32
+	scratchPool sync.Pool
 }
 
-// Load reads the index from a file
-func Load(filename string, distanceFunc DistanceFunc) (*HNSW, error) {
-    file, err := os.Open(filename)
-    if err != nil {
-        return nil, err
-    }
-    defer file.Close()
+// New constructs a new HNSW Index for vectors of dimension dim configured with opts.
+func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
+	if dim <= 0 {
+		return nil, ErrInvalidDimension
+	}
+	cfg := newDefaultConfig()
+	for _, opt := range opts {
+		if opt == nil {
+			continue
+		}
+		if err := opt(&cfg); err != nil {
+			return nil, err
+		}
+	}
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+	seed := cfg.seed
+	if !cfg.hasSeed {
+		seed = time.Now().UnixNano()
+	}
 
-    var serialized SerializableHNSW
-    decoder := gob.NewDecoder(file)
-    if err := decoder.Decode(&serialized); err != nil {
-        return nil, err
-    }
-
-    h := &HNSW{
-        Nodes:          make(map[int]*Node),
-        MaxLevel:       serialized.MaxLevel,
-        M:              serialized.M,
-        Mmax:           serialized.Mmax,
-        EfConstruction: serialized.EfConstruction,
-        Dim:            serialized.Dim,
-        DistanceFunc:   distanceFunc,
-        deletedNodes:   serialized.DeletedNodes,
-        mutex:          sync.RWMutex{},
-    }
-
-    // First pass: create all nodes
-    for id, sNode := range serialized.Nodes {
-        node := &Node{
-            ID:       sNode.ID,
-            Vector:   sNode.Vector,
-            MaxLevel: sNode.MaxLevel,
-            Levels:   make([]*Level, len(sNode.Levels)),
-            RWMutex:  sync.RWMutex{},
-        }
-        h.Nodes[id] = node
-    }
-
-    // Second pass: restore connections using IDs
-    for id, sNode := range serialized.Nodes {
-        node := h.Nodes[id]
-        for i, sLevel := range sNode.Levels {
-            level := &Level{
-                Connections: make([]*Node, len(sLevel.ConnectionIDs)),
-            }
-            for j, connID := range sLevel.ConnectionIDs {
-                level.Connections[j] = h.Nodes[connID]
-            }
-            node.Levels[i] = level
-        }
-
-        if id == serialized.EntryPointID {
-            h.EntryPoint = node
-        }
-    }
-
-    return h, nil
+	idx := &Index[K]{
+		dim:            dim,
+		m:              cfg.m,
+		mmax:           cfg.mmax,
+		efConstruction: cfg.efConstruction,
+		efSearch:       cfg.efSearch,
+		mL:             1.0 / math.Log(float64(cfg.m)),
+		metric:         cfg.metric,
+		customDist:     cfg.customDist,
+		heuristic:      cfg.heuristic,
+		seed:           seed,
+		extToInt:       make(map[K]uint32),
+		rng:            rand.New(rand.NewSource(seed)),
+	}
+	idx.entryState.Store(emptyEntry)
+	idx.initScratchPool()
+	return idx, nil
 }
 
-func (h *HNSW) randomLevel() int {
-    level := 0
-    for rand.Float64() < 0.5 && level < 32 {
-        level++
-    }
-    return level
+func (idx *Index[K]) initScratchPool() {
+	idx.scratchPool = sync.Pool{
+		New: func() any {
+			stripe := (idx.stripeSeq.Add(1) - 1) & readMask
+			return newSearchScratch(stripe, idx.mmax)
+		},
+	}
 }
 
-func min(a, b int) int {
-    if a < b {
-        return a
-    }
-    return b
+func (idx *Index[K]) lockAllReadStripes() {
+	for i := 0; i < readStripes; i++ {
+		idx.readStripes[i].mu.Lock()
+	}
 }
 
-func (h *HNSW) searchLayer(entryPoint *Node, vec Vector, ef int, level int) []*Node {
-    if level >= len(entryPoint.Levels) {
-        return []*Node{entryPoint}
-    }
-
-    visited := sync.Map{}
-    visitedResults := sync.Map{} // Track visited nodes that are potential results
-
-    // Initialize candidates with entry point
-    candidates := []*Node{entryPoint}
-    visited.Store(entryPoint.ID, true)
-
-    // Initialize result set
-    results := []*Node{entryPoint}
-    visitedResults.Store(entryPoint.ID, true)
-
-    // Calculate distance to entry point
-    entryDist := h.DistanceFunc(entryPoint.Vector, vec)
-    furthestDist := entryDist
-
-    var resultsMutex sync.Mutex
-
-    for len(candidates) > 0 {
-        // Get current candidate
-        currentNode := candidates[0]
-        currentDist := h.DistanceFunc(currentNode.Vector, vec)
-        candidates = candidates[1:]
-
-        // If we've found something further than our worst candidate
-        if currentDist > furthestDist {
-            continue
-        }
-
-        // Check neighbors
-        currentNode.RLock()
-        if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
-            for _, neighbor := range currentNode.Levels[level].Connections {
-                if neighbor == nil {
-                    continue
-                }
-
-                // Skip if already visited
-                if _, seen := visited.LoadOrStore(neighbor.ID, true); seen {
-                    continue
-                }
-
-                neighborDist := h.DistanceFunc(neighbor.Vector, vec)
-
-                // Update results if this is a better candidate
-                resultsMutex.Lock()
-                if len(results) < ef || neighborDist < furthestDist {
-                    if _, seen := visitedResults.LoadOrStore(neighbor.ID, true); !seen {
-                        results = append(results, neighbor)
-                    }
-
-                    // Sort results by distance
-                    sort.Slice(results, func(i, j int) bool {
-                        return h.DistanceFunc(results[i].Vector, vec) < h.DistanceFunc(results[j].Vector, vec)
-                    })
-
-                    // Keep only ef closest results
-                    if len(results) > ef {
-                        results = results[:ef]
-                    }
-
-                    // Update furthest distance
-                    furthestDist = h.DistanceFunc(results[len(results)-1].Vector, vec)
-                }
-                resultsMutex.Unlock()
-
-                // Add to candidates if it could lead to better results
-                candidates = append(candidates, neighbor)
-            }
-        }
-        currentNode.RUnlock()
-
-        // Sort candidates by distance
-        sort.Slice(candidates, func(i, j int) bool {
-            return h.DistanceFunc(candidates[i].Vector, vec) < h.DistanceFunc(candidates[j].Vector, vec)
-        })
-    }
-
-    return results
+func (idx *Index[K]) unlockAllReadStripes() {
+	for i := readStripes - 1; i >= 0; i-- {
+		idx.readStripes[i].mu.Unlock()
+	}
 }
 
-/*
-This optimized version:
-1. Uses worker pool for parallel neighbor exploration
-2. Maintains thread-safe visited sets
-3. Uses heap for efficient nearest neighbor tracking
-4. Handles contention with fine-grained locking
-*/
-func (h *HNSW) searchLayerParallel(entryPoint *Node, vec Vector, ef int, level int) []*Node {
-    if level >= len(entryPoint.Levels) {
-        return []*Node{entryPoint}
-    }
-
-    visited := sync.Map{}
-    visitedResults := sync.Map{}
-    candidates := &nodeDistHeap{}
-    resultSet := &nodeDistHeap{}
-    heap.Init(candidates)
-    heap.Init(resultSet)
-
-    entryDist := h.DistanceFunc(entryPoint.Vector, vec)
-    heap.Push(candidates, &nodeDist{entryPoint, entryDist})
-    heap.Push(resultSet, &nodeDist{entryPoint, entryDist})
-    visited.Store(entryPoint.ID, true)
-    visitedResults.Store(entryPoint.ID, true)
-
-    // Process in batches
-    batchSize := 256
-    for candidates.Len() > 0 {
-        // Collect candidates and their neighbors
-        neighbors := make([]*Node, 0, batchSize*h.M)
-        candidateNodes := make([]*Node, 0, batchSize)
-
-        // Gather neighbors from current batch of candidates
-        for i := 0; i < batchSize && candidates.Len() > 0; i++ {
-            node := heap.Pop(candidates).(*nodeDist).node
-            candidateNodes = append(candidateNodes, node)
-
-            node.RLock()
-            if level < len(node.Levels) && node.Levels[level] != nil {
-                for _, neighbor := range node.Levels[level].Connections {
-                    if neighbor != nil {
-                        if _, seen := visited.LoadOrStore(neighbor.ID, true); !seen {
-                            neighbors = append(neighbors, neighbor)
-                        }
-                    }
-                }
-            }
-            node.RUnlock()
-        }
-
-        // Calculate distances in batch
-        if len(neighbors) > 0 {
-            // Create a slice of vectors
-            batchVectors := make([]Vector, len(neighbors))
-            for i, n := range neighbors {
-                // Make a copy of the vector to ensure it's contiguous in memory
-                batchVectors[i] = make(Vector, len(n.Vector))
-                copy(batchVectors[i], n.Vector)
-            }
-
-            distances := BatchEuclidean(vec, batchVectors)
-
-            // Process results
-            for i, dist := range distances {
-                node := neighbors[i]
-                if resultSet.Len() < ef || dist < (*resultSet)[0].dist {
-                    if _, seen := visitedResults.LoadOrStore(node.ID, true); !seen {
-                        heap.Push(candidates, &nodeDist{node, dist})
-                        heap.Push(resultSet, &nodeDist{node, dist})
-                        if resultSet.Len() > ef {
-                            heap.Pop(resultSet)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    results := make([]*Node, resultSet.Len())
-    for i := len(results) - 1; i >= 0; i-- {
-        results[i] = heap.Pop(resultSet).(*nodeDist).node
-    }
-    return results
+func (idx *Index[K]) acquireExclusive() {
+	idx.writeGate.Lock()
+	idx.lockAllReadStripes()
 }
 
-type nodeDist struct {
-    node *Node
-    dist float64
+func (idx *Index[K]) releaseExclusive() {
+	idx.unlockAllReadStripes()
+	idx.writeGate.Unlock()
 }
 
-type nodeDistHeap []*nodeDist
-
-func (h nodeDistHeap) Len() int            { return len(h) }
-func (h nodeDistHeap) Less(i, j int) bool  { return h[i].dist > h[j].dist }
-func (h nodeDistHeap) Swap(i, j int)       { h[i], h[j] = h[j], h[i] }
-func (h *nodeDistHeap) Push(x interface{}) { *h = append(*h, x.(*nodeDist)) }
-func (h *nodeDistHeap) Pop() interface{} {
-    old := *h
-    n := len(old)
-    x := old[n-1]
-    *h = old[0 : n-1]
-    return x
+func (idx *Index[K]) getChunk(id uint32) (*arenaChunk[K], int) {
+	l1 := id >> (chunkBits + dirL2Bits)
+	l2 := (id >> chunkBits) & dirL2Mask
+	page := idx.dir[l1].Load()
+	if page == nil {
+		return nil, 0
+	}
+	return page.chunks[l2].Load(), int(id & chunkMask)
 }
 
-func (h *HNSW) addConnection(node, newNode *Node, level int) {
-    node.Lock()
-    defer node.Unlock()
-
-    // Ensure level exists
-    for len(node.Levels) <= level {
-        node.Levels = append(node.Levels, &Level{})
-    }
-
-    // Get max connections for this level
-    maxConnections := h.M
-    if level == 0 {
-        maxConnections = h.Mmax
-    }
-
-    // Check if connection already exists
-    for _, conn := range node.Levels[level].Connections {
-        if conn.ID == newNode.ID {
-            return // Already connected
-        }
-    }
-
-    // Calculate distances for all connections including the new one
-    type connDist struct {
-        node     *Node
-        distance float64
-    }
-
-    conns := make([]connDist, 0, len(node.Levels[level].Connections)+1)
-
-    // Add existing connections
-    for _, conn := range node.Levels[level].Connections {
-        dist := h.DistanceFunc(node.Vector, conn.Vector)
-        conns = append(conns, connDist{conn, dist})
-    }
-
-    // Add new connection
-    newDist := h.DistanceFunc(node.Vector, newNode.Vector)
-    conns = append(conns, connDist{newNode, newDist})
-
-    // Sort by distance
-    sort.Slice(conns, func(i, j int) bool {
-        return conns[i].distance < conns[j].distance
-    })
-
-    // Keep only the closest connections up to maxConnections
-    node.Levels[level].Connections = make([]*Node, 0, maxConnections)
-    for i := 0; i < len(conns) && i < maxConnections; i++ {
-        node.Levels[level].Connections = append(node.Levels[level].Connections, conns[i].node)
-    }
-
-    // Optional: Keep some long-range connections for better graph navigability
-    if level > 0 && len(conns) > maxConnections {
-        // Replace one close connection with a longer-range one
-        longRangeIdx := len(conns) - 1
-        if rand.Float64() < 0.2 { // 20% chance to keep a long-range connection
-            node.Levels[level].Connections[maxConnections-1] = conns[longRangeIdx].node
-        }
-    }
+func (idx *Index[K]) vectorAt(chunk *arenaChunk[K], slot int) []float32 {
+	off := slot * idx.dim
+	return chunk.vecs[off : off+idx.dim : off+idx.dim]
 }
 
-// SearchConfig contains search parameters
-type SearchConfig struct {
-    UseParallel bool
-    WorkerCount int
+func (idx *Index[K]) extKeyAt(id uint32) K {
+	chunk, slot := idx.getChunk(id)
+	return chunk.intToExt[slot]
 }
 
-// DefaultSearchConfig returns default search configuration
-func DefaultSearchConfig() SearchConfig {
-    return SearchConfig{
-        UseParallel: true,
-        WorkerCount: runtime.GOMAXPROCS(0),
-    }
+func (idx *Index[K]) isDeleted(id uint32) bool {
+	chunk, slot := idx.getChunk(id)
+	if chunk == nil {
+		return true
+	}
+	word := slot >> 6
+	bit := uint64(1) << (uint(slot) & 63)
+	return (chunk.deleted[word].Load() & bit) != 0
 }
 
-// Search finds k nearest neighbors using default config (parallel)
-func (h *HNSW) Search(vec Vector, k int) []int {
-    return h.SearchWithConfig(vec, k, DefaultSearchConfig())
+func (idx *Index[K]) markDeleted(id uint32) bool {
+	chunk, slot := idx.getChunk(id)
+	word := slot >> 6
+	bit := uint64(1) << (uint(slot) & 63)
+	for {
+		old := chunk.deleted[word].Load()
+		if (old & bit) != 0 {
+			return false
+		}
+		if chunk.deleted[word].CompareAndSwap(old, old|bit) {
+			return true
+		}
+	}
 }
 
-// SearchWithConfig finds k nearest neighbors with custom config
-func (h *HNSW) SearchWithConfig(vec Vector, k int, config SearchConfig) []int {
-    h.mutex.RLock()
-    defer h.mutex.RUnlock()
+func (idx *Index[K]) maxConnForLevel(lvl int) int {
+	if lvl == 0 {
+		return idx.mmax
+	}
+	return idx.m
+}
 
-    if len(h.Nodes) == 0 || h.EntryPoint == nil {
-        return []int{}
-    }
+func (idx *Index[K]) randomLevel() uint8 {
+	idx.rngMu.Lock()
+	u := idx.rng.Float64()
+	idx.rngMu.Unlock()
+	if u < 1e-18 {
+		u = 1e-18
+	}
+	lvl := int(-math.Log(u) * idx.mL)
+	if lvl > maxNodeLevel {
+		lvl = maxNodeLevel
+	}
+	if lvl < 0 {
+		lvl = 0
+	}
+	return uint8(lvl)
+}
 
-    // Get entry point
-    currentNode := h.EntryPoint
+func (idx *Index[K]) distQuery(id uint32, query []float32, qInvNorm float32) float32 {
+	chunk, slot := idx.getChunk(id)
+	vec := idx.vectorAt(chunk, slot)
+	switch idx.metric {
+	case MetricEuclidean, MetricSquaredEuclidean:
+		return l2Squared(vec, query)
+	case MetricCosine:
+		return cosineWithInvNorms(vec, query, chunk.invNorms[slot], qInvNorm)
+	case MetricDotProduct:
+		d := dotProduct(vec, query)
+		if d == 0 {
+			return 0
+		}
+		return -d
+	default:
+		return idx.customDist(vec, query)
+	}
+}
 
-    // Search through levels
-    for level := h.MaxLevel; level > 0; level-- {
-        changed := true
-        for changed {
-            changed = false
-            currentNode.RLock()
-            if level < len(currentNode.Levels) && currentNode.Levels[level] != nil {
-                for _, neighbor := range currentNode.Levels[level].Connections {
-                    if h.DistanceFunc(neighbor.Vector, vec) < h.DistanceFunc(currentNode.Vector, vec) {
-                        currentNode.RUnlock()
-                        currentNode = neighbor
-                        changed = true
-                        break
-                    }
-                }
-            }
-            if !changed {
-                currentNode.RUnlock()
-            }
-        }
-    }
+func (idx *Index[K]) distNodes(a, b uint32) float32 {
+	ca, sa := idx.getChunk(a)
+	cb, sb := idx.getChunk(b)
+	va := idx.vectorAt(ca, sa)
+	vb := idx.vectorAt(cb, sb)
+	switch idx.metric {
+	case MetricEuclidean, MetricSquaredEuclidean:
+		return l2Squared(va, vb)
+	case MetricCosine:
+		return cosineWithInvNorms(va, vb, ca.invNorms[sa], cb.invNorms[sb])
+	case MetricDotProduct:
+		d := dotProduct(va, vb)
+		if d == 0 {
+			return 0
+		}
+		return -d
+	default:
+		return idx.customDist(va, vb)
+	}
+}
 
-    // Search base layer
-    var candidates []*Node
-    if config.UseParallel {
-        candidates = h.searchLayerParallel(currentNode, vec, k*2, 0) // Double ef for better accuracy
-    } else {
-        candidates = h.searchLayer(currentNode, vec, k*2, 0)
-    }
+func (idx *Index[K]) copyNeighbors(id uint32, lvl int, dst []uint32, lockNode bool) []uint32 {
+	dst = dst[:0]
+	if lockNode {
+		idx.nodeLocks[id&nodeLockMask].RLock()
+	}
+	chunk, slot := idx.getChunk(id)
+	if lvl == 0 {
+		cnt := int(chunk.l0Count[slot])
+		base := slot * idx.mmax
+		dst = append(dst, chunk.l0Edges[base:base+cnt]...)
+	} else if lvl <= int(chunk.maxLevels[slot]) {
+		dst = append(dst, chunk.upperLevels[slot][lvl-1]...)
+	}
+	if lockNode {
+		idx.nodeLocks[id&nodeLockMask].RUnlock()
+	}
+	return dst
+}
 
-    // Filter deleted nodes
-    validCandidates := make([]*Node, 0, len(candidates))
-    for _, node := range candidates {
-        if !h.deletedNodes[node.ID] {
-            validCandidates = append(validCandidates, node)
-        }
-    }
+func (idx *Index[K]) setNeighbors(id uint32, lvl int, nbrs []uint32, lockNode bool) {
+	if lockNode {
+		idx.nodeLocks[id&nodeLockMask].Lock()
+	}
+	chunk, slot := idx.getChunk(id)
+	if lvl == 0 {
+		n := len(nbrs)
+		if n > idx.mmax {
+			n = idx.mmax
+		}
+		base := slot * idx.mmax
+		copy(chunk.l0Edges[base:base+n], nbrs[:n])
+		chunk.l0Count[slot] = uint16(n)
+	} else if lvl <= int(chunk.maxLevels[slot]) {
+		n := len(nbrs)
+		if n > idx.m {
+			n = idx.m
+		}
+		dst := chunk.upperLevels[slot][lvl-1]
+		if cap(dst) < n {
+			dst = make([]uint32, n, idx.m)
+		} else {
+			dst = dst[:n]
+		}
+		copy(dst, nbrs[:n])
+		chunk.upperLevels[slot][lvl-1] = dst
+	}
+	if lockNode {
+		idx.nodeLocks[id&nodeLockMask].Unlock()
+	}
+}
 
-    // Sort by distance
-    sort.Slice(validCandidates, func(i, j int) bool {
-        return h.DistanceFunc(validCandidates[i].Vector, vec) < h.DistanceFunc(validCandidates[j].Vector, vec)
-    })
+func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
+	newID := idx.nextID.Load()
+	l1 := newID >> (chunkBits + dirL2Bits)
+	l2 := (newID >> chunkBits) & dirL2Mask
+	slot := int(newID & chunkMask)
 
-    // Return k closest
-    count := min(k, len(validCandidates))
-    result := make([]int, count)
-    for i := 0; i < count; i++ {
-        result[i] = validCandidates[i].ID
-    }
+	page := idx.dir[l1].Load()
+	if page == nil {
+		page = &dirPage[K]{}
+		idx.dir[l1].Store(page)
+	}
+	chunk := page.chunks[l2].Load()
+	if chunk == nil {
+		chunk = &arenaChunk[K]{
+			vecs:     make([]float32, chunkSize*idx.dim),
+			intToExt: make([]K, chunkSize),
+			l0Edges:  make([]uint32, chunkSize*idx.mmax),
+		}
+		if idx.metric == MetricCosine {
+			chunk.invNorms = make([]float32, chunkSize)
+		}
+		page.chunks[l2].Store(chunk)
+	}
 
-    return result
+	off := slot * idx.dim
+	copy(chunk.vecs[off:off+idx.dim], vec)
+	if idx.metric == MetricCosine {
+		chunk.invNorms[slot] = computeInvNorm(vec)
+	}
+	chunk.intToExt[slot] = extID
+	chunk.maxLevels[slot] = lvl
+	chunk.l0Count[slot] = 0
+	if lvl > 0 {
+		chunk.upperLevels[slot] = make([][]uint32, lvl)
+	}
+
+	idx.nextID.Store(newID + 1)
+	idx.extToInt[extID] = newID
+	idx.liveCount.Add(1)
+	return newID
+}
+
+// Insert adds or updates the vector associated with id.
+// If id already exists, its vector is atomically replaced without leaving stale graph links or orphans.
+func (idx *Index[K]) Insert(id K, vec []float32) error {
+	if len(vec) != idx.dim {
+		return ErrDimensionMismatch
+	}
+	if err := validateVectorFinite(vec); err != nil {
+		return err
+	}
+	idx.insertValidated(id, vec)
+	return nil
+}
+
+func (idx *Index[K]) tryInsertFast(id K, vec []float32, scratch *searchScratch) bool {
+	// Fast path for new keys: hold writeGate.RLock + P-local readStripe.RLock.
+	idx.writeGate.RLock()
+	defer idx.writeGate.RUnlock()
+	idx.readStripes[scratch.stripe].mu.RLock()
+	defer idx.readStripes[scratch.stripe].mu.RUnlock()
+
+	idx.extMu.RLock()
+	_, exists := idx.extToInt[id]
+	idx.extMu.RUnlock()
+	if exists {
+		return false
+	}
+
+	lvl := idx.randomLevel()
+	idx.extMu.Lock()
+	if _, exists = idx.extToInt[id]; exists {
+		idx.extMu.Unlock()
+		return false
+	}
+	newID := idx.allocSlot(id, vec, lvl)
+	idx.extMu.Unlock()
+
+	idx.insertNode(newID, vec, int(lvl), scratch, false)
+	return true
+}
+
+func (idx *Index[K]) insertValidated(id K, vec []float32) {
+	scratch := idx.scratchPool.Get().(*searchScratch)
+	defer idx.scratchPool.Put(scratch)
+
+	if idx.tryInsertFast(id, vec, scratch) {
+		return
+	}
+
+	// Exclusive path for upsert (existing key).
+	idx.acquireExclusive()
+	defer idx.releaseExclusive()
+
+	if oldID, existed := idx.extToInt[id]; existed {
+		idx.deleteInternal(id, oldID, scratch)
+	}
+	lvl := idx.randomLevel()
+	newID := idx.allocSlot(id, vec, lvl)
+	idx.insertNode(newID, vec, int(lvl), scratch, true)
+}
+
+func (idx *Index[K]) insertNode(newID uint32, vec []float32, newLevel int, scratch *searchScratch, exclusive bool) {
+	qInvNorm := float32(0)
+	if idx.metric == MetricCosine {
+		qInvNorm = computeInvNorm(vec)
+	}
+
+	for {
+		es := idx.entryState.Load()
+		if es == emptyEntry {
+			newES := (uint64(newLevel) << 32) | uint64(newID)
+			if idx.entryState.CompareAndSwap(emptyEntry, newES) {
+				return
+			}
+			continue
+		}
+
+		entryID := uint32(es)
+		entryLevel := int(es >> 32)
+
+		currID := entryID
+		currDist := idx.distQuery(currID, vec, qInvNorm)
+
+		for lvl := entryLevel; lvl > newLevel; lvl-- {
+			currID, currDist = idx.greedyStep(currID, currDist, vec, qInvNorm, lvl, scratch, !exclusive)
+		}
+
+		topLvl := newLevel
+		if entryLevel < topLvl {
+			topLvl = entryLevel
+		}
+
+		for lvl := topLvl; lvl >= 0; lvl-- {
+			idx.searchLayerInsert(vec, qInvNorm, currID, currDist, lvl, idx.efConstruction, scratch, !exclusive)
+			if len(scratch.results) > 0 {
+				best := scratch.results[0]
+				for i := 1; i < len(scratch.results); i++ {
+					if scratch.results[i].dist < best.dist {
+						best = scratch.results[i]
+					}
+				}
+				currID = best.id
+				currDist = best.dist
+			}
+
+			maxConn := idx.maxConnForLevel(lvl)
+			chosen := scratch.chosenByLevel[lvl][:0]
+			if cap(chosen) < maxConn {
+				chosen = make([]uint32, 0, maxConn)
+			}
+			chosen = idx.selectNeighborsFromHeap(newID, scratch.results, maxConn, scratch, chosen)
+			scratch.chosenByLevel[lvl] = chosen
+			idx.setNeighbors(newID, lvl, chosen, !exclusive)
+		}
+
+		// Publish reverse edges only after all levels 0..topLvl on newID are populated.
+		for lvl := topLvl; lvl >= 0; lvl-- {
+			for _, nbrID := range scratch.chosenByLevel[lvl] {
+				idx.addConnection(nbrID, newID, lvl, scratch, !exclusive)
+			}
+		}
+
+		if newLevel > entryLevel {
+			for {
+				oldES := idx.entryState.Load()
+				if oldES != emptyEntry && int(oldES>>32) >= newLevel {
+					break
+				}
+				newES := (uint64(newLevel) << 32) | uint64(newID)
+				if idx.entryState.CompareAndSwap(oldES, newES) {
+					break
+				}
+			}
+		}
+		return
+	}
+}
+
+func (idx *Index[K]) greedyStep(currID uint32, currDist float32, query []float32, qInvNorm float32, lvl int, scratch *searchScratch, lockNode bool) (uint32, float32) {
+	for {
+		improved := false
+		nbrs := idx.copyNeighbors(currID, lvl, scratch.neighbors, lockNode)
+		scratch.neighbors = nbrs
+		for _, nbrID := range nbrs {
+			d := idx.distQuery(nbrID, query, qInvNorm)
+			if d < currDist {
+				currDist = d
+				currID = nbrID
+				improved = true
+			}
+		}
+		if !improved {
+			return currID, currDist
+		}
+	}
+}
+
+func (idx *Index[K]) searchLayerInsert(query []float32, qInvNorm float32, ep uint32, epDist float32, lvl int, ef int, scratch *searchScratch, lockNode bool) {
+	numNodes := idx.nextID.Load()
+	scratch.begin(numNodes)
+	scratch.visit(ep)
+	scratch.candidates.push(distNode{id: ep, dist: epDist})
+	if !idx.isDeleted(ep) {
+		scratch.results.push(distNode{id: ep, dist: epDist})
+	}
+
+	for len(scratch.candidates) > 0 {
+		curr := scratch.candidates.pop()
+		if len(scratch.results) >= ef && curr.dist > scratch.results[0].dist {
+			break
+		}
+		nbrs := idx.copyNeighbors(curr.id, lvl, scratch.neighbors, lockNode)
+		scratch.neighbors = nbrs
+		for _, nbrID := range nbrs {
+			if !scratch.visit(nbrID) {
+				continue
+			}
+			d := idx.distQuery(nbrID, query, qInvNorm)
+			if len(scratch.results) < ef || d < scratch.results[0].dist {
+				scratch.candidates.push(distNode{id: nbrID, dist: d})
+				if !idx.isDeleted(nbrID) {
+					if len(scratch.results) < ef {
+						scratch.results.push(distNode{id: nbrID, dist: d})
+					} else if d < scratch.results[0].dist {
+						scratch.results.replaceMax(distNode{id: nbrID, dist: d})
+					}
+				}
+			}
+		}
+	}
+}
+
+func (idx *Index[K]) selectNeighborsFromHeap(baseID uint32, cands []distNode, maxConn int, scratch *searchScratch, out []uint32) []uint32 {
+	work := scratch.heuristicWork[:0]
+	for _, c := range cands {
+		if c.id == baseID || idx.isDeleted(c.id) {
+			continue
+		}
+		dup := false
+		for _, existing := range work {
+			if existing.id == c.id {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			work = append(work, c)
+		}
+	}
+	scratch.heuristicWork = work
+	return idx.selectNeighborsWork(work, maxConn, scratch, out)
+}
+
+func (idx *Index[K]) selectNeighborsFromIDs(baseID uint32, ids []uint32, maxConn int, scratch *searchScratch, out []uint32) []uint32 {
+	work := scratch.heuristicWork[:0]
+	for _, cid := range ids {
+		if cid == baseID || idx.isDeleted(cid) {
+			continue
+		}
+		dup := false
+		for _, existing := range work {
+			if existing.id == cid {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			work = append(work, distNode{id: cid, dist: idx.distNodes(baseID, cid)})
+		}
+	}
+	scratch.heuristicWork = work
+	return idx.selectNeighborsWork(work, maxConn, scratch, out)
+}
+
+func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *searchScratch, out []uint32) []uint32 {
+	out = out[:0]
+	if len(work) <= maxConn {
+		for _, w := range work {
+			out = append(out, w.id)
+		}
+		return out
+	}
+
+	sort.Slice(work, func(i, j int) bool {
+		if work[i].dist != work[j].dist {
+			return work[i].dist < work[j].dist
+		}
+		return work[i].id < work[j].id
+	})
+
+	if !idx.heuristic {
+		for i := 0; i < maxConn; i++ {
+			out = append(out, work[i].id)
+		}
+		return out
+	}
+
+	selected := scratch.selected[:0]
+	discarded := scratch.discarded[:0]
+
+	for _, e := range work {
+		if len(selected) >= maxConn {
+			break
+		}
+		good := true
+		for _, s := range selected {
+			if idx.distNodes(e.id, s.id) < e.dist {
+				good = false
+				break
+			}
+		}
+		if good {
+			selected = append(selected, e)
+		} else {
+			discarded = append(discarded, e)
+		}
+	}
+
+	for i := 0; i < len(discarded) && len(selected) < maxConn; i++ {
+		selected = append(selected, discarded[i])
+	}
+
+	for _, s := range selected {
+		out = append(out, s.id)
+	}
+	scratch.selected = selected
+	scratch.discarded = discarded
+	return out
+}
+
+func (idx *Index[K]) addConnection(targetID, newNbr uint32, lvl int, scratch *searchScratch, lockNode bool) {
+	if targetID == newNbr {
+		return
+	}
+	if lockNode {
+		idx.nodeLocks[targetID&nodeLockMask].Lock()
+		defer idx.nodeLocks[targetID&nodeLockMask].Unlock()
+	}
+
+	if idx.isDeleted(targetID) {
+		return
+	}
+
+	chunk, slot := idx.getChunk(targetID)
+	if lvl > int(chunk.maxLevels[slot]) {
+		return
+	}
+
+	maxConn := idx.maxConnForLevel(lvl)
+	cand := scratch.candIDs[:0]
+	if lvl == 0 {
+		cnt := int(chunk.l0Count[slot])
+		base := slot * idx.mmax
+		for _, nb := range chunk.l0Edges[base : base+cnt] {
+			if nb == newNbr {
+				scratch.candIDs = cand
+				return
+			}
+			if !idx.isDeleted(nb) {
+				cand = append(cand, nb)
+			}
+		}
+	} else {
+		for _, nb := range chunk.upperLevels[slot][lvl-1] {
+			if nb == newNbr {
+				scratch.candIDs = cand
+				return
+			}
+			if !idx.isDeleted(nb) {
+				cand = append(cand, nb)
+			}
+		}
+	}
+	cand = append(cand, newNbr)
+	scratch.candIDs = cand
+
+	if len(cand) <= maxConn {
+		idx.setNeighbors(targetID, lvl, cand, false)
+		return
+	}
+
+	var chosenBuf [64]uint32
+	chosen := chosenBuf[:0]
+	chosen = idx.selectNeighborsFromIDs(targetID, cand, maxConn, scratch, chosen)
+	idx.setNeighbors(targetID, lvl, chosen, false)
+}
+
+func (idx *Index[K]) removeEdge(targetID, deadID uint32, lvl int) {
+	chunk, slot := idx.getChunk(targetID)
+	if chunk == nil || lvl > int(chunk.maxLevels[slot]) {
+		return
+	}
+	if lvl == 0 {
+		cnt := int(chunk.l0Count[slot])
+		base := slot * idx.mmax
+		edges := chunk.l0Edges[base : base+cnt]
+		w := 0
+		for _, nb := range edges {
+			if nb != deadID && !idx.isDeleted(nb) {
+				edges[w] = nb
+				w++
+			}
+		}
+		chunk.l0Count[slot] = uint16(w)
+		return
+	}
+	edges := chunk.upperLevels[slot][lvl-1]
+	w := 0
+	for _, nb := range edges {
+		if nb != deadID && !idx.isDeleted(nb) {
+			edges[w] = nb
+			w++
+		}
+	}
+	chunk.upperLevels[slot][lvl-1] = edges[:w]
+}
+
+// Delete removes id from the index and returns true if it was present.
+func (idx *Index[K]) Delete(id K) bool {
+	scratch := idx.scratchPool.Get().(*searchScratch)
+	defer idx.scratchPool.Put(scratch)
+
+	idx.acquireExclusive()
+	defer idx.releaseExclusive()
+
+	oldID, ok := idx.extToInt[id]
+	if !ok {
+		return false
+	}
+	idx.deleteInternal(id, oldID, scratch)
+	return true
+}
+
+func (idx *Index[K]) deleteInternal(extID K, oldID uint32, scratch *searchScratch) {
+	delete(idx.extToInt, extID)
+	if idx.markDeleted(oldID) {
+		idx.liveCount.Add(-1)
+		idx.tombstoneCount.Add(1)
+	}
+
+	chunk, slot := idx.getChunk(oldID)
+	oldMaxLvl := int(chunk.maxLevels[slot])
+
+	// Snapshot neighbors per level, remove oldID, and run 2-hop repair among live neighbors.
+	nbrBuf := make([]uint32, 0, idx.mmax)
+	for lvl := 0; lvl <= oldMaxLvl; lvl++ {
+		nbrBuf = idx.copyNeighbors(oldID, lvl, nbrBuf, false)
+		w := 0
+		for _, nb := range nbrBuf {
+			if nb != oldID && !idx.isDeleted(nb) {
+				nbrBuf[w] = nb
+				w++
+			}
+		}
+		liveNbrs := nbrBuf[:w]
+		for _, u := range liveNbrs {
+			idx.removeEdge(u, oldID, lvl)
+		}
+		for i, u := range liveNbrs {
+			for j, v := range liveNbrs {
+				if i != j {
+					idx.addConnection(u, v, lvl, scratch, false)
+				}
+			}
+		}
+	}
+
+	if idx.liveCount.Load() == 0 {
+		idx.entryState.Store(emptyEntry)
+		return
+	}
+	if uint32(idx.entryState.Load()) == oldID {
+		idx.electEntryPoint()
+	}
+}
+
+func (idx *Index[K]) electEntryPoint() {
+	total := idx.nextID.Load()
+	bestID := invalidID
+	bestLvl := -1
+	for id := uint32(0); id < total; id++ {
+		if idx.isDeleted(id) {
+			continue
+		}
+		chunk, slot := idx.getChunk(id)
+		lvl := int(chunk.maxLevels[slot])
+		if lvl > bestLvl {
+			bestLvl = lvl
+			bestID = id
+		}
+	}
+	if bestID == invalidID {
+		idx.entryState.Store(emptyEntry)
+		return
+	}
+	idx.entryState.Store((uint64(bestLvl) << 32) | uint64(bestID))
+}
+
+// Get returns a copy of the stored vector for id and true if present, or nil and false otherwise.
+func (idx *Index[K]) Get(id K) ([]float32, bool) {
+	scratch := idx.scratchPool.Get().(*searchScratch)
+	stripe := scratch.stripe
+	idx.scratchPool.Put(scratch)
+
+	idx.readStripes[stripe].mu.RLock()
+	defer idx.readStripes[stripe].mu.RUnlock()
+
+	idx.extMu.RLock()
+	intID, ok := idx.extToInt[id]
+	idx.extMu.RUnlock()
+	if !ok || idx.isDeleted(intID) {
+		return nil, false
+	}
+	chunk, slot := idx.getChunk(intID)
+	out := make([]float32, idx.dim)
+	copy(out, idx.vectorAt(chunk, slot))
+	return out, true
+}
+
+// Contains reports whether id is currently present in the index.
+func (idx *Index[K]) Contains(id K) bool {
+	scratch := idx.scratchPool.Get().(*searchScratch)
+	stripe := scratch.stripe
+	idx.scratchPool.Put(scratch)
+
+	idx.readStripes[stripe].mu.RLock()
+	defer idx.readStripes[stripe].mu.RUnlock()
+
+	idx.extMu.RLock()
+	intID, ok := idx.extToInt[id]
+	idx.extMu.RUnlock()
+	return ok && !idx.isDeleted(intID)
+}
+
+// Len returns the number of live vectors currently stored in the index.
+func (idx *Index[K]) Len() int {
+	return int(idx.liveCount.Load())
+}
+
+// Dim returns the fixed vector dimension of the index.
+func (idx *Index[K]) Dim() int {
+	return idx.dim
+}
+
+// Clear removes all vectors and resets the index to an empty state while retaining configuration.
+func (idx *Index[K]) Clear() {
+	idx.acquireExclusive()
+	defer idx.releaseExclusive()
+
+	for i := 0; i < dirL1Size; i++ {
+		idx.dir[i].Store(nil)
+	}
+	idx.extToInt = make(map[K]uint32)
+	idx.nextID.Store(0)
+	idx.liveCount.Store(0)
+	idx.tombstoneCount.Store(0)
+	idx.entryState.Store(emptyEntry)
+}
+
+// Compact reclaims tombstoned slots left by deletions and updates, densely remapping live nodes and graph edges.
+func (idx *Index[K]) Compact() error {
+	idx.acquireExclusive()
+	defer idx.releaseExclusive()
+
+	if idx.tombstoneCount.Load() == 0 {
+		return nil
+	}
+	if idx.liveCount.Load() == 0 {
+		for i := 0; i < dirL1Size; i++ {
+			idx.dir[i].Store(nil)
+		}
+		idx.extToInt = make(map[K]uint32)
+		idx.nextID.Store(0)
+		idx.tombstoneCount.Store(0)
+		idx.entryState.Store(emptyEntry)
+		return nil
+	}
+
+	oldNext := idx.nextID.Load()
+	oldToNew := make([]uint32, oldNext)
+	for i := range oldToNew {
+		oldToNew[i] = invalidID
+	}
+
+	liveOld := make([]uint32, 0, idx.liveCount.Load())
+	for id := uint32(0); id < oldNext; id++ {
+		if !idx.isDeleted(id) {
+			oldToNew[id] = uint32(len(liveOld))
+			liveOld = append(liveOld, id)
+		}
+	}
+
+	var newPages [dirL1Size]*dirPage[K]
+	newExtToInt := make(map[K]uint32, len(liveOld))
+	bestEntryID := uint32(0)
+	bestEntryLevel := -1
+
+	for newIdx, oldID := range liveOld {
+		newID := uint32(newIdx)
+		oldChunk, oldSlot := idx.getChunk(oldID)
+
+		l1 := newID >> (chunkBits + dirL2Bits)
+		l2 := (newID >> chunkBits) & dirL2Mask
+		newSlot := int(newID & chunkMask)
+
+		page := newPages[l1]
+		if page == nil {
+			page = &dirPage[K]{}
+			newPages[l1] = page
+		}
+		newChunk := page.chunks[l2].Load()
+		if newChunk == nil {
+			newChunk = &arenaChunk[K]{
+				vecs:     make([]float32, chunkSize*idx.dim),
+				intToExt: make([]K, chunkSize),
+				l0Edges:  make([]uint32, chunkSize*idx.mmax),
+			}
+			if idx.metric == MetricCosine {
+				newChunk.invNorms = make([]float32, chunkSize)
+			}
+			page.chunks[l2].Store(newChunk)
+		}
+
+		copy(newChunk.vecs[newSlot*idx.dim:(newSlot+1)*idx.dim], idx.vectorAt(oldChunk, oldSlot))
+		if idx.metric == MetricCosine {
+			newChunk.invNorms[newSlot] = oldChunk.invNorms[oldSlot]
+		}
+		extKey := oldChunk.intToExt[oldSlot]
+		newChunk.intToExt[newSlot] = extKey
+		newExtToInt[extKey] = newID
+
+		maxLvl := oldChunk.maxLevels[oldSlot]
+		newChunk.maxLevels[newSlot] = maxLvl
+		if int(maxLvl) > bestEntryLevel {
+			bestEntryLevel = int(maxLvl)
+			bestEntryID = newID
+		}
+
+		// Remap layer 0 edges.
+		oldCnt := int(oldChunk.l0Count[oldSlot])
+		oldBase := oldSlot * idx.mmax
+		newBase := newSlot * idx.mmax
+		w := 0
+		for _, oldNb := range oldChunk.l0Edges[oldBase : oldBase+oldCnt] {
+			if oldNb >= oldNext {
+				continue
+			}
+			mapped := oldToNew[oldNb]
+			if mapped == invalidID || mapped == newID {
+				continue
+			}
+			dup := false
+			for j := 0; j < w; j++ {
+				if newChunk.l0Edges[newBase+j] == mapped {
+					dup = true
+					break
+				}
+			}
+			if !dup && w < idx.mmax {
+				newChunk.l0Edges[newBase+w] = mapped
+				w++
+			}
+		}
+		newChunk.l0Count[newSlot] = uint16(w)
+
+		// Remap upper levels.
+		if maxLvl > 0 {
+			newUpper := make([][]uint32, maxLvl)
+			for l := 0; l < int(maxLvl); l++ {
+				src := oldChunk.upperLevels[oldSlot][l]
+				dst := make([]uint32, 0, len(src))
+				for _, oldNb := range src {
+					if oldNb >= oldNext {
+						continue
+					}
+					mapped := oldToNew[oldNb]
+					if mapped == invalidID || mapped == newID {
+						continue
+					}
+					dup := false
+					for _, prev := range dst {
+						if prev == mapped {
+							dup = true
+							break
+						}
+					}
+					if !dup && len(dst) < idx.m {
+						dst = append(dst, mapped)
+					}
+				}
+				newUpper[l] = dst
+			}
+			newChunk.upperLevels[newSlot] = newUpper
+		}
+	}
+
+	for i := 0; i < dirL1Size; i++ {
+		idx.dir[i].Store(newPages[i])
+	}
+	idx.extToInt = newExtToInt
+	idx.nextID.Store(uint32(len(liveOld)))
+	idx.tombstoneCount.Store(0)
+	idx.entryState.Store((uint64(bestEntryLevel) << 32) | uint64(bestEntryID))
+	return nil
+}
+
+// Stats returns a snapshot of current index counts, parameters, and estimated memory usage.
+func (idx *Index[K]) Stats() IndexStats {
+	idx.writeGate.RLock()
+	defer idx.writeGate.RUnlock()
+
+	es := idx.entryState.Load()
+	entrySet := es != emptyEntry
+	maxLevel := 0
+	if entrySet {
+		maxLevel = int(es >> 32)
+	}
+
+	totalSlots := idx.nextID.Load()
+	numChunks := (int(totalSlots) + chunkSize - 1) / chunkSize
+	capSlots := numChunks * chunkSize
+
+	var memBytes int64
+	memBytes += int64(unsafe.Sizeof(*idx))
+	var keyZero K
+	perChunkBytes := int64(chunkSize*idx.dim*4) +
+		int64(chunkSize)*int64(unsafe.Sizeof(keyZero)) +
+		int64(chunkSize*idx.mmax*4) +
+		int64(unsafe.Sizeof(arenaChunk[K]{}))
+	if idx.metric == MetricCosine {
+		perChunkBytes += int64(chunkSize * 4)
+	}
+	memBytes += int64(numChunks) * perChunkBytes
+
+	for id := uint32(0); id < totalSlots; id++ {
+		chunk, slot := idx.getChunk(id)
+		if chunk != nil && chunk.maxLevels[slot] > 0 {
+			idx.nodeLocks[id&nodeLockMask].RLock()
+			for _, lvlSlice := range chunk.upperLevels[slot] {
+				memBytes += int64(cap(lvlSlice)*4) + int64(unsafe.Sizeof(lvlSlice))
+			}
+			idx.nodeLocks[id&nodeLockMask].RUnlock()
+		}
+	}
+
+	return IndexStats{
+		Len:            int(idx.liveCount.Load()),
+		Deleted:        int(idx.tombstoneCount.Load()),
+		Capacity:       capSlots,
+		Dim:            idx.dim,
+		MaxLevel:       maxLevel,
+		EntryPointSet:  entrySet,
+		M:              idx.m,
+		Mmax:           idx.mmax,
+		EfConstruction: idx.efConstruction,
+		EfSearch:       idx.efSearch,
+		Metric:         idx.metric,
+		Heuristic:      idx.heuristic,
+		MemoryBytes:    memBytes,
+	}
 }

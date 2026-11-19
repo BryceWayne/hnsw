@@ -1,2 +1,35 @@
-examples/example
+# Binaries and build outputs
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/examples/example
+/examples/examples
+examples/main
+
+# Coverage and profiling artifacts
+coverage.txt
+coverage.out
+cov.out
+*.prof
+*.pprof
+
+# Index persistence & temporary artifacts
 *hnsw_index*
+*.gob
+*.bin
+*.hnsw
+.hnsw-tmp-*
+test_results.txt
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
