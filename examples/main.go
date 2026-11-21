@@ -1,3 +1,5 @@
+// Command examples demonstrates building, querying, filtering, compacting,
+// and persisting an HNSW index with github.com/BryceWayne/hnsw.
 package main
 
 import (

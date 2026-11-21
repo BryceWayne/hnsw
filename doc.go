@@ -29,8 +29,9 @@
 // [Index.Contains], [Index.Len], [Index.Stats]) and new-key [Index.Insert] calls
 // coordinate through striped read/write locks, per-node locks, and atomic
 // entry-point state. Pooled search scratch buffers (epoch-stamped visited
-// slices and value-typed heaps) eliminate per-query heap allocations in steady
-// state.
+// slices, hole-sifting value-typed heaps, and reusable Algorithm 4 pruning
+// buffers) eliminate per-query heap allocations in steady state, and batch
+// workers reuse one scratch buffer per worker across the entire batch.
 //
 // # Updates, Deletion, and Compaction
 //
@@ -44,6 +45,8 @@
 //
 // [Index.WriteTo] and [ReadFrom] (along with atomic file helpers
 // [Index.SaveFile] and [LoadFile]) stream a versioned, CRC32-checksummed,
-// tombstone-free binary representation. Indexes configured with
-// [WithCustomDistance] require passing [WithCustomDistance] again on load.
+// tombstone-free binary representation using chunked bulk little-endian I/O
+// buffers for high throughput and OOM-safe incremental deserialization. Indexes
+// configured with [WithCustomDistance] require passing [WithCustomDistance]
+// again on load.
 package hnsw

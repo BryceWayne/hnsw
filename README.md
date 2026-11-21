@@ -309,20 +309,20 @@ HNSW builds a hierarchical proximity graph where upper layers act as sparse long
 
 ## Measured Recall & Benchmarks
 
-All measurements below were collected directly from this codebase (`go1.23.3 linux/amd64` on **12th Gen Intel(R) Core(TM) i9-12900K**, 12 CPUs) using `go test -run=^$ -bench=. -benchmem -benchtime=50ms ./...` and `go test -run=TestRecall10K -v .`.
+All measurements below were collected directly from this codebase (`go1.23.3 linux/amd64` on **12th Gen Intel(R) Core(TM) i9-12900K**, 12 CPUs) using `go test -run=^$ -bench=. -benchmem -benchtime=100ms -count=5 .` (medians reported) and `go test -run=TestRecall10K -v .`.
 
 ### Recall@K & Query Latency (`BenchmarkRecallAndLatency`, 10K Clustered Vectors, `dim=128`, `M=16`, `Mmax=32`, `EfConstruction=200`, `k=10`)
 
 | Metric | `EfSearch` | Latency (`ns/op`) | Throughput (`queries/s`) | `Recall@1` | `Recall@10` | `B/op` | `allocs/op` |
 |---|---|---|---|---|---|---|---|
-| `MetricEuclidean` | `16` | `8,692` | `115,054` | `0.9900` | `0.9760` | `208` | `2` |
-| `MetricEuclidean` | `32` | `13,047` | `76,646` | `0.9900` | `0.9960` | `208` | `2` |
-| `MetricEuclidean` | `64` | `19,779` | `50,560` | `1.0000` | `1.0000` | `208` | `2` |
-| `MetricEuclidean` | `128` | `29,658` | `33,717` | `1.0000` | `1.0000` | `208` | `2` |
-| `MetricCosine` | `16` | `9,789` | `102,151` | `0.9900` | `0.9840` | `208` | `2` |
-| `MetricCosine` | `32` | `18,402` | `54,343` | `1.0000` | `0.9970` | `208` | `2` |
-| `MetricCosine` | `64` | `20,676` | `48,365` | `1.0000` | `1.0000` | `208` | `2` |
-| `MetricCosine` | `128` | `30,320` | `32,982` | `1.0000` | `1.0000` | `208` | `2` |
+| `MetricEuclidean` | `16` | `8,765` | `114,090` | `0.9900` | `0.9770` | `208` | `2` |
+| `MetricEuclidean` | `32` | `13,235` | `75,559` | `0.9900` | `0.9960` | `208` | `2` |
+| `MetricEuclidean` | `64` | `19,657` | `50,872` | `1.0000` | `1.0000` | `208` | `2` |
+| `MetricEuclidean` | `128` | `30,376` | `32,920` | `1.0000` | `1.0000` | `208` | `2` |
+| `MetricCosine` | `16` | `10,365` | `96,480` | `0.9900` | `0.9850` | `208` | `2` |
+| `MetricCosine` | `32` | `15,020` | `66,578` | `1.0000` | `0.9980` | `208` | `2` |
+| `MetricCosine` | `64` | `21,245` | `47,069` | `1.0000` | `1.0000` | `208` | `2` |
+| `MetricCosine` | `128` | `31,930` | `31,319` | `1.0000` | `1.0000` | `208` | `2` |
 
 *(Note: `Search(query, 10)` with default options uses **160 B/op, 1 allocs/op** — solely the returned result slice; passing `WithSearchEf(ef)` adds 1 option closure allocation.)*
 
@@ -332,49 +332,49 @@ All measurements below were collected directly from this codebase (`go1.23.3 lin
 
 | Benchmark | Latency (`ns/op`) | Throughput | `Recall@10` | `B/op` | `allocs/op` |
 |---|---|---|---|---|---|
-| `BenchmarkSearchFilter/selectivity=50pct` (`ef=64`) | `73,057` | `13,688 queries/s` | `0.9920` | `208` | `2` |
-| `BenchmarkSearchFilter/selectivity=10pct` (`ef=64`) | `163,101` | `6,131 queries/s` | `0.9990` | `208` | `2` |
-| `BenchmarkPersistence/WriteTo_10K_dim128` | `21,427,715` | `306.90 MB/s` | — | `147,834` | `16` |
-| `BenchmarkPersistence/ReadFrom_10K_dim128` | `20,375,068` | `322.76 MB/s` | — | `7,989,472` | `1,784` |
+| `BenchmarkSearchFilter/selectivity=50pct` (`ef=64`) | `77,246` | `12,946 queries/s` | `0.9920` | `208` | `2` |
+| `BenchmarkSearchFilter/selectivity=10pct` (`ef=64`) | `173,822` | `5,753 queries/s` | `0.9990` | `208` | `2` |
+| `BenchmarkPersistence/WriteTo_10K_dim128` | `5,139,080` | `1,279.64 MB/s` | — | `148,480` | `17` |
+| `BenchmarkPersistence/ReadFrom_10K_dim128` | `4,316,376` | `1,523.54 MB/s` | — | `7,704,217` | `1,511` |
 
 ### Distance Kernel Microbenchmarks (`BenchmarkDistanceAVX2VsFallback`, `0 B/op`, `0 allocs/op`)
 
 | Kernel & Dim | AVX2+FMA (`ns/op`) | Pure Go (`ns/op`) | Speedup |
 |---|---|---|---|
-| `L2Sq dim=32` | `2.242` | `7.916` | `3.53x` |
-| `L2Sq dim=128` | `4.129` | `28.58` | `6.92x` |
-| `L2Sq dim=384` | `12.25` | `87.27` | `7.12x` |
-| `L2Sq dim=768` | `19.97` | `164.5` | `8.24x` |
-| `L2Sq dim=1536` | `38.85` | `313.9` | `8.08x` |
-| `Dot dim=32` | `2.116` | `6.783` | `3.21x` |
-| `Dot dim=128` | `3.815` | `22.74` | `5.96x` |
-| `Dot dim=384` | `8.190` | `59.23` | `7.23x` |
-| `Dot dim=768` | `16.58` | `111.6` | `6.73x` |
-| `Dot dim=1536` | `33.24` | `218.4` | `6.57x` |
+| `L2Sq dim=32` | `2.445` | `6.945` | `2.84x` |
+| `L2Sq dim=128` | `3.773` | `27.41` | `7.26x` |
+| `L2Sq dim=384` | `9.385` | `82.23` | `8.76x` |
+| `L2Sq dim=768` | `20.56` | `162.7` | `7.91x` |
+| `L2Sq dim=1536` | `39.54` | `321.8` | `8.14x` |
+| `Dot dim=32` | `2.202` | `5.825` | `2.65x` |
+| `Dot dim=128` | `3.541` | `18.67` | `5.27x` |
+| `Dot dim=384` | `8.501` | `59.08` | `6.95x` |
+| `Dot dim=768` | `16.73` | `113.9` | `6.81x` |
+| `Dot dim=1536` | `34.05` | `218.9` | `6.43x` |
 
 ### End-to-End Search: AVX2+FMA vs Pure Go (`-tags purego`) (`160 B/op`, `1 allocs/op`)
 
 | Benchmark | AVX2+FMA (`ns/op`) | AVX2 (`queries/s`) | Pure Go (`ns/op`) | Pure Go (`queries/s`) | Speedup |
 |---|---|---|---|---|---|
-| `BenchmarkSearch` (1T, `1K x 128`) | `10,932` | `91,476` | `28,754` | `34,778` | `2.63x` |
-| `BenchmarkSearchComparison/Size_1000_Dim_32` (12T) | `1,053` | `949,896` | `1,381` | `724,004` | `1.31x` |
-| `BenchmarkSearchComparison/Size_1000_Dim_128` (12T) | `1,470` | `680,448` | `3,239` | `308,742` | `2.20x` |
-| `BenchmarkSearchComparison/Size_1000_Dim_512` (12T) | `3,379` | `295,926` | `10,142` | `98,597` | `3.00x` |
-| `BenchmarkSearchComparison/Size_10000_Dim_32` (12T) | `1,654` | `604,754` | `2,858` | `349,897` | `1.73x` |
-| `BenchmarkSearchComparison/Size_10000_Dim_128` (12T) | `2,715` | `368,375` | `8,219` | `121,665` | `3.03x` |
-| `BenchmarkSearchComparison/Size_10000_Dim_512` (12T) | `10,840` | `92,249` | `21,834` | `45,800` | `2.01x` |
+| `BenchmarkSearch` (1T, `1K x 128`) | `10,435` | `95,834` | `30,027` | `33,304` | `2.88x` |
+| `BenchmarkSearchComparison/Size_1000_Dim_32` (12T) | `962.5` | `1,038,936` | `1,367` | `731,663` | `1.42x` |
+| `BenchmarkSearchComparison/Size_1000_Dim_128` (12T) | `1,422` | `703,027` | `3,367` | `297,022` | `2.37x` |
+| `BenchmarkSearchComparison/Size_1000_Dim_512` (12T) | `3,392` | `294,820` | `11,935` | `83,785` | `3.52x` |
+| `BenchmarkSearchComparison/Size_10000_Dim_32` (12T) | `1,536` | `651,199` | `2,742` | `364,681` | `1.79x` |
+| `BenchmarkSearchComparison/Size_10000_Dim_128` (12T) | `2,878` | `347,470` | `7,784` | `128,477` | `2.70x` |
+| `BenchmarkSearchComparison/Size_10000_Dim_512` (12T) | `10,060` | `99,402` | `22,233` | `44,978` | `2.21x` |
 
 ### Parallel `SearchBatch` Scaling (`BenchmarkParallelSearchScaling`, `10K x dim=256`, 64 queries/batch)
 
 | Threads | Batch Latency (`ns/op`) | Throughput (`queries/s`) | Speedup vs 1T |
 |---|---|---|---|
-| `1` | `4,006,087` | `15,976` | `1.00x` |
-| `2` | `1,957,385` | `32,697` | `2.05x` |
-| `4` | `1,055,854` | `60,614` | `3.79x` |
-| `8` | `656,011` | `97,559` | `6.11x` |
-| `16` (12 CPUs) | `716,984` | `89,263` | `5.59x` |
+| `1` | `3,728,925` | `17,163` | `1.00x` |
+| `2` | `1,819,927` | `35,166` | `2.05x` |
+| `4` | `992,615` | `64,476` | `3.76x` |
+| `8` | `744,247` | `85,993` | `5.01x` |
+| `16` (12 CPUs) | `622,595` | `102,795` | `5.99x` |
 
-- **Insertion Throughput**: `BenchmarkInsert` (single-goroutine `Insert`): **`8,681 vecs/s`** (`115,198 ns/vec`); `BenchmarkBatchOperations/InsertBatch` (12-CPU worker pool): **`39,061 vecs/s`** (`25,601 ns/vec`).
+- **Insertion Throughput**: `BenchmarkInsert` (single-goroutine `Insert`): **`10,129 vecs/s`** (`98,724 ns/vec`, `122 allocs/op`); `BenchmarkBatchOperations/InsertBatch` (12-CPU worker pool): **`46,964 vecs/s`** (`21,293 ns/vec`, `526 allocs/op`).
 
 ---
 

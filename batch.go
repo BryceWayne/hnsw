@@ -5,9 +5,14 @@ import (
 	"sync/atomic"
 )
 
-// InsertBatch validates and inserts all items into the index using a bounded worker pool.
-// If any vector fails dimension or NaN/Inf validation, InsertBatch returns an error without mutating the index.
-// When items contains duplicate IDs, last-write-wins semantics are applied deterministically.
+// InsertBatch validates and inserts all items into the index using a bounded worker pool
+// (configured with [WithWorkers], defaulting to runtime.GOMAXPROCS(0)).
+// Each worker reuses a single pooled scratch buffer across all items it processes.
+//
+// All items are validated up front: if any vector fails dimension ([ErrDimensionMismatch])
+// or finiteness ([ErrNaNOrInf]) checks, or if options are invalid ([ErrInvalidConfig]),
+// InsertBatch returns an error without mutating the index. When items contains duplicate IDs,
+// last-write-wins semantics are applied deterministically. Supports cancellation via [WithContext].
 func (idx *Index[K]) InsertBatch(items []Item[K], opts ...SearchOption) error {
 	sc := defaultSearchConfig()
 	if err := sc.apply(opts); err != nil {
@@ -54,6 +59,8 @@ func (idx *Index[K]) InsertBatch(items []Item[K], opts ...SearchOption) error {
 	}
 
 	if workers == 1 || total == 1 {
+		scratch := idx.scratchPool.Get().(*searchScratch)
+		defer idx.scratchPool.Put(scratch)
 		for i := 0; i < total; i++ {
 			if sc.ctx != nil {
 				if err := sc.ctx.Err(); err != nil {
@@ -61,7 +68,7 @@ func (idx *Index[K]) InsertBatch(items []Item[K], opts ...SearchOption) error {
 				}
 			}
 			it := getItem(i)
-			idx.insertValidated(it.ID, it.Vector)
+			idx.insertValidatedWithScratch(it.ID, it.Vector, scratch)
 		}
 		return nil
 	}
@@ -74,6 +81,8 @@ func (idx *Index[K]) InsertBatch(items []Item[K], opts ...SearchOption) error {
 	for w := 0; w < workers; w++ {
 		go func() {
 			defer wg.Done()
+			scratch := idx.scratchPool.Get().(*searchScratch)
+			defer idx.scratchPool.Put(scratch)
 			for {
 				if sc.ctx != nil {
 					if err := sc.ctx.Err(); err != nil {
@@ -86,7 +95,7 @@ func (idx *Index[K]) InsertBatch(items []Item[K], opts ...SearchOption) error {
 					return
 				}
 				it := getItem(i)
-				idx.insertValidated(it.ID, it.Vector)
+				idx.insertValidatedWithScratch(it.ID, it.Vector, scratch)
 			}
 		}()
 	}
@@ -99,7 +108,12 @@ func (idx *Index[K]) InsertBatch(items []Item[K], opts ...SearchOption) error {
 	return firstErr
 }
 
-// SearchBatch executes Search for each query in queries using a bounded worker pool and returns results in query order.
+// SearchBatch executes [Index.Search] for each query in queries using a bounded worker pool
+// (configured with [WithWorkers], defaulting to runtime.GOMAXPROCS(0)) and returns results
+// in the same order as queries. Each worker reuses a single pooled scratch buffer across queries.
+//
+// All queries and options are validated up front; returns [ErrInvalidK], [ErrDimensionMismatch],
+// [ErrNaNOrInf], [ErrInvalidConfig], or ctx.Err() (via [WithContext]) on failure.
 func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error) {
 	sc := defaultSearchConfig()
 	if err := sc.apply(opts); err != nil {
@@ -120,6 +134,11 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 		return [][]SearchResult[K]{}, nil
 	}
 
+	ef := idx.efSearch
+	if sc.efSet {
+		ef = sc.ef
+	}
+
 	results := make([][]SearchResult[K], len(queries))
 	workers := sc.effectiveWorkers()
 	if workers > len(queries) {
@@ -127,13 +146,15 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 	}
 
 	if workers == 1 || len(queries) == 1 {
+		scratch := idx.scratchPool.Get().(*searchScratch)
+		defer idx.scratchPool.Put(scratch)
 		for i, q := range queries {
 			if sc.ctx != nil {
 				if err := sc.ctx.Err(); err != nil {
 					return nil, err
 				}
 			}
-			res, err := idx.searchCore(q, k, nil, opts...)
+			res, err := idx.searchValidated(sc.ctx, q, k, ef, nil, scratch)
 			if err != nil {
 				return nil, err
 			}
@@ -150,6 +171,8 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 	for w := 0; w < workers; w++ {
 		go func() {
 			defer wg.Done()
+			scratch := idx.scratchPool.Get().(*searchScratch)
+			defer idx.scratchPool.Put(scratch)
 			for {
 				if sc.ctx != nil {
 					if err := sc.ctx.Err(); err != nil {
@@ -161,7 +184,7 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 				if i >= len(queries) {
 					return
 				}
-				res, err := idx.searchCore(queries[i], k, nil, opts...)
+				res, err := idx.searchValidated(sc.ctx, queries[i], k, ef, nil, scratch)
 				if err != nil {
 					errOnce.Do(func() { firstErr = err })
 					return
@@ -182,7 +205,9 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 	return results, nil
 }
 
-// DeleteBatch removes all matching keys from ids in a single atomic pass and returns the number of removed entries.
+// DeleteBatch removes all matching keys from ids in a single exclusive pass, repairs
+// surviving 2-hop neighborhoods, re-elects the entry point if needed, and returns the
+// number of entries actually removed. Duplicate or absent keys in ids are safely ignored.
 func (idx *Index[K]) DeleteBatch(ids []K) int {
 	if len(ids) == 0 {
 		return 0

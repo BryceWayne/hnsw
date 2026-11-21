@@ -60,10 +60,12 @@ func (c *config) validate() error {
 	return nil
 }
 
-// Option configures an Index created by New or loaded by ReadFrom and LoadFile.
+// Option configures an [Index] created by [New] or loaded by [ReadFrom] and [LoadFile].
+// Invalid option values cause [New], [ReadFrom], or [LoadFile] to return an error wrapping [ErrInvalidConfig].
 type Option func(*config) error
 
-// WithM sets the target number of bi-directional links per node on upper layers (default 16, minimum 2).
+// WithM sets the target number of bi-directional links per node on upper layers.
+// Valid values are in [2, 65535]; the default is 16.
 func WithM(m int) Option {
 	return func(c *config) error {
 		if m < 2 || m > math.MaxUint16 {
@@ -74,7 +76,8 @@ func WithM(m int) Option {
 	}
 }
 
-// WithMmax sets the maximum number of links per node at layer 0 (default 2*M).
+// WithMmax sets the maximum number of bi-directional links per node at layer 0.
+// Valid values are in [M, 65535]; when omitted, Mmax defaults to 2*M.
 func WithMmax(mmax int) Option {
 	return func(c *config) error {
 		if mmax <= 0 || mmax > math.MaxUint16 {
@@ -86,7 +89,8 @@ func WithMmax(mmax int) Option {
 	}
 }
 
-// WithEfConstruction sets the candidate list size used during index construction (default 200).
+// WithEfConstruction sets the beam search width (candidate list size) used during index construction.
+// Must be positive; the default is 200. Higher values improve graph quality at the cost of slower inserts.
 func WithEfConstruction(ef int) Option {
 	return func(c *config) error {
 		if ef <= 0 {
@@ -97,7 +101,9 @@ func WithEfConstruction(ef int) Option {
 	}
 }
 
-// WithEfSearch sets the default candidate list size used during search (default 50).
+// WithEfSearch sets the default beam search width (candidate list size) used during queries.
+// Must be positive; the default is 50. May also be passed to [ReadFrom] or [LoadFile] to override
+// the serialized default for subsequent searches.
 func WithEfSearch(ef int) Option {
 	return func(c *config) error {
 		if ef <= 0 {
@@ -109,7 +115,8 @@ func WithEfSearch(ef int) Option {
 	}
 }
 
-// WithMetric selects a built-in distance metric (default MetricEuclidean).
+// WithMetric selects a built-in distance [Metric] ([MetricEuclidean], [MetricSquaredEuclidean],
+// [MetricCosine], or [MetricDotProduct]). The default is [MetricEuclidean].
 func WithMetric(m Metric) Option {
 	return func(c *config) error {
 		if m > MetricDotProduct {
@@ -123,7 +130,9 @@ func WithMetric(m Metric) Option {
 	}
 }
 
-// WithCustomDistance configures a user-supplied distance function for the index.
+// WithCustomDistance configures a user-supplied [DistanceFunc] for the index.
+// Smaller values returned by fn indicate closer vectors. Indexes persisted with a custom distance
+// require supplying WithCustomDistance again to [ReadFrom] or [LoadFile].
 func WithCustomDistance(fn DistanceFunc) Option {
 	return func(c *config) error {
 		if fn == nil {
@@ -137,7 +146,9 @@ func WithCustomDistance(fn DistanceFunc) Option {
 	}
 }
 
-// WithSeed sets the random seed used for HNSW level assignment.
+// WithSeed sets the PRNG seed used for deterministic HNSW level assignment.
+// When omitted, the index is seeded from the current wall-clock time.
+// May also be passed to [ReadFrom] or [LoadFile] to re-seed subsequent insertions.
 func WithSeed(seed int64) Option {
 	return func(c *config) error {
 		c.seed = seed
@@ -146,7 +157,8 @@ func WithSeed(seed int64) Option {
 	}
 }
 
-// WithHeuristic enables or disables Algorithm 4 diversity-aware neighbor selection (default true).
+// WithHeuristic enables or disables HNSW Algorithm 4 diversity-aware neighbor selection.
+// Enabled by default; disabling falls back to simple nearest-neighbor pruning.
 func WithHeuristic(enabled bool) Option {
 	return func(c *config) error {
 		c.heuristic = enabled
@@ -197,10 +209,12 @@ func (sc *searchConfig) effectiveWorkers() int {
 	return w
 }
 
-// SearchOption configures per-call behavior for Search, SearchFilter, SearchBatch, and InsertBatch.
+// SearchOption configures per-call behavior for [Index.Search], [Index.SearchFilter],
+// [Index.SearchBatch], and [Index.InsertBatch].
 type SearchOption func(*searchConfig)
 
 // WithSearchEf overrides the index default efSearch parameter for a single search call.
+// Must be positive (otherwise returns [ErrInvalidConfig]); effective ef is always clamped to >= k.
 func WithSearchEf(ef int) SearchOption {
 	return func(sc *searchConfig) {
 		sc.ef = ef
@@ -208,14 +222,16 @@ func WithSearchEf(ef int) SearchOption {
 	}
 }
 
-// WithContext attaches a cancellation context to a search or batch operation.
+// WithContext attaches a cancellation or deadline [context.Context] to a search or batch operation.
+// If ctx is already canceled or expires during traversal, the operation aborts and returns ctx.Err().
 func WithContext(ctx context.Context) SearchOption {
 	return func(sc *searchConfig) {
 		sc.ctx = ctx
 	}
 }
 
-// WithWorkers sets the bounded worker pool size for batch operations.
+// WithWorkers sets the bounded worker pool size for [Index.InsertBatch] and [Index.SearchBatch].
+// Must be positive (otherwise returns [ErrInvalidConfig]); defaults to runtime.GOMAXPROCS(0).
 func WithWorkers(n int) SearchOption {
 	return func(sc *searchConfig) {
 		sc.workers = n

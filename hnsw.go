@@ -3,7 +3,7 @@ package hnsw
 import (
 	"math"
 	"math/rand"
-	"sort"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -124,7 +124,10 @@ type Index[K comparable] struct {
 	scratchPool sync.Pool
 }
 
-// New constructs a new HNSW Index for vectors of dimension dim configured with opts.
+// New constructs a new HNSW [Index] for vectors of fixed dimension dim configured with opts.
+//
+// Returns [ErrInvalidDimension] if dim <= 0, or an error wrapping [ErrInvalidConfig]
+// if any option is invalid or incompatible (such as Mmax < M).
 func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 	if dim <= 0 {
 		return nil, ErrInvalidDimension
@@ -216,14 +219,18 @@ func (idx *Index[K]) extKeyAt(id uint32) K {
 	return chunk.intToExt[slot]
 }
 
-func (idx *Index[K]) isDeleted(id uint32) bool {
-	chunk, slot := idx.getChunk(id)
+func isDeletedAt[K comparable](chunk *arenaChunk[K], slot int) bool {
 	if chunk == nil {
 		return true
 	}
 	word := slot >> 6
 	bit := uint64(1) << (uint(slot) & 63)
 	return (chunk.deleted[word].Load() & bit) != 0
+}
+
+func (idx *Index[K]) isDeleted(id uint32) bool {
+	chunk, slot := idx.getChunk(id)
+	return isDeletedAt(chunk, slot)
 }
 
 func (idx *Index[K]) markDeleted(id uint32) bool {
@@ -265,8 +272,7 @@ func (idx *Index[K]) randomLevel() uint8 {
 	return uint8(lvl)
 }
 
-func (idx *Index[K]) distQuery(id uint32, query []float32, qInvNorm float32) float32 {
-	chunk, slot := idx.getChunk(id)
+func (idx *Index[K]) distQueryAt(chunk *arenaChunk[K], slot int, query []float32, qInvNorm float32) float32 {
 	vec := idx.vectorAt(chunk, slot)
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
@@ -284,16 +290,12 @@ func (idx *Index[K]) distQuery(id uint32, query []float32, qInvNorm float32) flo
 	}
 }
 
-func (idx *Index[K]) distNodes(a, b uint32) float32 {
-	ca, sa := idx.getChunk(a)
-	cb, sb := idx.getChunk(b)
-	va := idx.vectorAt(ca, sa)
-	vb := idx.vectorAt(cb, sb)
+func (idx *Index[K]) distVecs(va []float32, invA float32, vb []float32, invB float32) float32 {
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
 		return l2Squared(va, vb)
 	case MetricCosine:
-		return cosineWithInvNorms(va, vb, ca.invNorms[sa], cb.invNorms[sb])
+		return cosineWithInvNorms(va, vb, invA, invB)
 	case MetricDotProduct:
 		d := dotProduct(va, vb)
 		if d == 0 {
@@ -305,8 +307,25 @@ func (idx *Index[K]) distNodes(a, b uint32) float32 {
 	}
 }
 
+func (idx *Index[K]) distQuery(id uint32, query []float32, qInvNorm float32) float32 {
+	chunk, slot := idx.getChunk(id)
+	return idx.distQueryAt(chunk, slot, query, qInvNorm)
+}
+
+func (idx *Index[K]) distNodes(a, b uint32) float32 {
+	ca, sa := idx.getChunk(a)
+	cb, sb := idx.getChunk(b)
+	va := idx.vectorAt(ca, sa)
+	vb := idx.vectorAt(cb, sb)
+	var invA, invB float32
+	if idx.metric == MetricCosine {
+		invA = ca.invNorms[sa]
+		invB = cb.invNorms[sb]
+	}
+	return idx.distVecs(va, invA, vb, invB)
+}
+
 func (idx *Index[K]) copyNeighbors(id uint32, lvl int, dst []uint32, lockNode bool) []uint32 {
-	dst = dst[:0]
 	if lockNode {
 		idx.nodeLocks[id&nodeLockMask].RLock()
 	}
@@ -314,9 +333,22 @@ func (idx *Index[K]) copyNeighbors(id uint32, lvl int, dst []uint32, lockNode bo
 	if lvl == 0 {
 		cnt := int(chunk.l0Count[slot])
 		base := slot * idx.mmax
-		dst = append(dst, chunk.l0Edges[base:base+cnt]...)
+		if cap(dst) >= cnt {
+			dst = dst[:cnt]
+			copy(dst, chunk.l0Edges[base:base+cnt])
+		} else {
+			dst = append(dst[:0], chunk.l0Edges[base:base+cnt]...)
+		}
 	} else if lvl <= int(chunk.maxLevels[slot]) {
-		dst = append(dst, chunk.upperLevels[slot][lvl-1]...)
+		src := chunk.upperLevels[slot][lvl-1]
+		if cap(dst) >= len(src) {
+			dst = dst[:len(src)]
+			copy(dst, src)
+		} else {
+			dst = append(dst[:0], src...)
+		}
+	} else {
+		dst = dst[:0]
 	}
 	if lockNode {
 		idx.nodeLocks[id&nodeLockMask].RUnlock()
@@ -399,7 +431,10 @@ func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
 }
 
 // Insert adds or updates the vector associated with id.
+// The input slice vec is copied; mutating vec after Insert returns does not affect the index.
 // If id already exists, its vector is atomically replaced without leaving stale graph links or orphans.
+//
+// Returns [ErrDimensionMismatch] if len(vec) != idx.Dim(), or [ErrNaNOrInf] if vec contains NaN or ±Inf.
 func (idx *Index[K]) Insert(id K, vec []float32) error {
 	if len(vec) != idx.dim {
 		return ErrDimensionMismatch
@@ -441,7 +476,10 @@ func (idx *Index[K]) tryInsertFast(id K, vec []float32, scratch *searchScratch) 
 func (idx *Index[K]) insertValidated(id K, vec []float32) {
 	scratch := idx.scratchPool.Get().(*searchScratch)
 	defer idx.scratchPool.Put(scratch)
+	idx.insertValidatedWithScratch(id, vec, scratch)
+}
 
+func (idx *Index[K]) insertValidatedWithScratch(id K, vec []float32, scratch *searchScratch) {
 	if idx.tryInsertFast(id, vec, scratch) {
 		return
 	}
@@ -536,12 +574,19 @@ func (idx *Index[K]) insertNode(newID uint32, vec []float32, newLevel int, scrat
 }
 
 func (idx *Index[K]) greedyStep(currID uint32, currDist float32, query []float32, qInvNorm float32, lvl int, scratch *searchScratch, lockNode bool) (uint32, float32) {
+	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
 	for {
 		improved := false
 		nbrs := idx.copyNeighbors(currID, lvl, scratch.neighbors, lockNode)
 		scratch.neighbors = nbrs
 		for _, nbrID := range nbrs {
-			d := idx.distQuery(nbrID, query, qInvNorm)
+			var d float32
+			if isL2 {
+				chunk, slot := idx.getChunk(nbrID)
+				d = l2Squared(idx.vectorAt(chunk, slot), query)
+			} else {
+				d = idx.distQuery(nbrID, query, qInvNorm)
+			}
 			if d < currDist {
 				currDist = d
 				currID = nbrID
@@ -563,6 +608,7 @@ func (idx *Index[K]) searchLayerInsert(query []float32, qInvNorm float32, ep uin
 		scratch.results.push(distNode{id: ep, dist: epDist})
 	}
 
+	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
 	for len(scratch.candidates) > 0 {
 		curr := scratch.candidates.pop()
 		if len(scratch.results) >= ef && curr.dist > scratch.results[0].dist {
@@ -574,10 +620,16 @@ func (idx *Index[K]) searchLayerInsert(query []float32, qInvNorm float32, ep uin
 			if !scratch.visit(nbrID) {
 				continue
 			}
-			d := idx.distQuery(nbrID, query, qInvNorm)
+			chunk, slot := idx.getChunk(nbrID)
+			var d float32
+			if isL2 {
+				d = l2Squared(idx.vectorAt(chunk, slot), query)
+			} else {
+				d = idx.distQueryAt(chunk, slot, query, qInvNorm)
+			}
 			if len(scratch.results) < ef || d < scratch.results[0].dist {
 				scratch.candidates.push(distNode{id: nbrID, dist: d})
-				if !idx.isDeleted(nbrID) {
+				if !isDeletedAt(chunk, slot) {
 					if len(scratch.results) < ef {
 						scratch.results.push(distNode{id: nbrID, dist: d})
 					} else if d < scratch.results[0].dist {
@@ -610,10 +662,38 @@ func (idx *Index[K]) selectNeighborsFromHeap(baseID uint32, cands []distNode, ma
 	return idx.selectNeighborsWork(work, maxConn, scratch, out)
 }
 
+func cmpDistNode(a, b distNode) int {
+	if a.dist < b.dist {
+		return -1
+	}
+	if a.dist > b.dist {
+		return 1
+	}
+	if a.id < b.id {
+		return -1
+	}
+	if a.id > b.id {
+		return 1
+	}
+	return 0
+}
+
 func (idx *Index[K]) selectNeighborsFromIDs(baseID uint32, ids []uint32, maxConn int, scratch *searchScratch, out []uint32) []uint32 {
 	work := scratch.heuristicWork[:0]
+	baseChunk, baseSlot := idx.getChunk(baseID)
+	baseVec := idx.vectorAt(baseChunk, baseSlot)
+	var baseInvNorm float32
+	if idx.metric == MetricCosine {
+		baseInvNorm = baseChunk.invNorms[baseSlot]
+	}
+	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
+
 	for _, cid := range ids {
-		if cid == baseID || idx.isDeleted(cid) {
+		if cid == baseID {
+			continue
+		}
+		cChunk, cSlot := idx.getChunk(cid)
+		if isDeletedAt(cChunk, cSlot) {
 			continue
 		}
 		dup := false
@@ -624,7 +704,17 @@ func (idx *Index[K]) selectNeighborsFromIDs(baseID uint32, ids []uint32, maxConn
 			}
 		}
 		if !dup {
-			work = append(work, distNode{id: cid, dist: idx.distNodes(baseID, cid)})
+			var d float32
+			if isL2 {
+				d = l2Squared(baseVec, idx.vectorAt(cChunk, cSlot))
+			} else {
+				var cInvNorm float32
+				if idx.metric == MetricCosine {
+					cInvNorm = cChunk.invNorms[cSlot]
+				}
+				d = idx.distVecs(baseVec, baseInvNorm, idx.vectorAt(cChunk, cSlot), cInvNorm)
+			}
+			work = append(work, distNode{id: cid, dist: d})
 		}
 	}
 	scratch.heuristicWork = work
@@ -640,12 +730,7 @@ func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *
 		return out
 	}
 
-	sort.Slice(work, func(i, j int) bool {
-		if work[i].dist != work[j].dist {
-			return work[i].dist < work[j].dist
-		}
-		return work[i].id < work[j].id
-	})
+	slices.SortFunc(work, cmpDistNode)
 
 	if !idx.heuristic {
 		for i := 0; i < maxConn; i++ {
@@ -655,21 +740,49 @@ func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *
 	}
 
 	selected := scratch.selected[:0]
+	selectedVecs := scratch.selectedVecs[:0]
+	selectedInvNorms := scratch.selectedInvNorms[:0]
 	discarded := scratch.discarded[:0]
+
+	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
+	isCosine := idx.metric == MetricCosine
 
 	for _, e := range work {
 		if len(selected) >= maxConn {
 			break
 		}
+		eChunk, eSlot := idx.getChunk(e.id)
+		eVec := idx.vectorAt(eChunk, eSlot)
+		var eInvNorm float32
+		if isCosine {
+			eInvNorm = eChunk.invNorms[eSlot]
+		}
 		good := true
-		for _, s := range selected {
-			if idx.distNodes(e.id, s.id) < e.dist {
-				good = false
-				break
+		if isL2 {
+			for _, sVec := range selectedVecs {
+				if l2Squared(eVec, sVec) < e.dist {
+					good = false
+					break
+				}
+			}
+		} else {
+			for i, sVec := range selectedVecs {
+				var sInvNorm float32
+				if isCosine {
+					sInvNorm = selectedInvNorms[i]
+				}
+				if idx.distVecs(eVec, eInvNorm, sVec, sInvNorm) < e.dist {
+					good = false
+					break
+				}
 			}
 		}
 		if good {
 			selected = append(selected, e)
+			selectedVecs = append(selectedVecs, eVec)
+			if isCosine {
+				selectedInvNorms = append(selectedInvNorms, eInvNorm)
+			}
 		} else {
 			discarded = append(discarded, e)
 		}
@@ -682,7 +795,10 @@ func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *
 	for _, s := range selected {
 		out = append(out, s.id)
 	}
+	clear(selectedVecs)
 	scratch.selected = selected
+	scratch.selectedVecs = selectedVecs[:0]
+	scratch.selectedInvNorms = selectedInvNorms[:0]
 	scratch.discarded = discarded
 	return out
 }
@@ -774,7 +890,9 @@ func (idx *Index[K]) removeEdge(targetID, deadID uint32, lvl int) {
 	chunk.upperLevels[slot][lvl-1] = edges[:w]
 }
 
-// Delete removes id from the index and returns true if it was present.
+// Delete removes id from the index, repairs 2-hop neighborhoods among its surviving
+// neighbors, and re-elects the entry point if necessary. It returns true if id was present.
+// Tombstoned arena slots remain allocated until [Index.Compact] or [Index.Clear] is called.
 func (idx *Index[K]) Delete(id K) bool {
 	scratch := idx.scratchPool.Get().(*searchScratch)
 	defer idx.scratchPool.Put(scratch)
@@ -855,7 +973,9 @@ func (idx *Index[K]) electEntryPoint() {
 	idx.entryState.Store((uint64(bestLvl) << 32) | uint64(bestID))
 }
 
-// Get returns a copy of the stored vector for id and true if present, or nil and false otherwise.
+// Get returns an independent copy of the stored vector for id and true if present,
+// or nil and false otherwise. For [MetricCosine], Get returns the exact unnormalized
+// vector originally inserted.
 func (idx *Index[K]) Get(id K) ([]float32, bool) {
 	scratch := idx.scratchPool.Get().(*searchScratch)
 	stripe := scratch.stripe
@@ -916,7 +1036,9 @@ func (idx *Index[K]) Clear() {
 	idx.entryState.Store(emptyEntry)
 }
 
-// Compact reclaims tombstoned slots left by deletions and updates, densely remapping live nodes and graph edges.
+// Compact reclaims tombstoned arena slots left by deletions and updates, densely
+// remapping all live nodes and graph edges while preserving external keys and vectors.
+// If no tombstoned slots exist, Compact is a no-op.
 func (idx *Index[K]) Compact() error {
 	idx.acquireExclusive()
 	defer idx.releaseExclusive()
