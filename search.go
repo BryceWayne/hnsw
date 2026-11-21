@@ -53,10 +53,10 @@ func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, 
 
 	scratch := idx.scratchPool.Get().(*searchScratch)
 	defer idx.scratchPool.Put(scratch)
-	return idx.searchValidated(query, k, ef, ctx, filter, scratch)
+	return idx.searchValidated(ctx, query, k, ef, filter, scratch)
 }
 
-func (idx *Index[K]) searchValidated(query []float32, k int, ef int, ctx context.Context, filter func(id K) bool, scratch *searchScratch) ([]SearchResult[K], error) {
+func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int, ef int, filter func(id K) bool, scratch *searchScratch) ([]SearchResult[K], error) {
 	stripe := scratch.stripe
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
