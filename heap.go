@@ -29,19 +29,22 @@ func (h *minHeap) pop() distNode {
 }
 
 func (h minHeap) siftUp(i int) {
+	val := h[i]
 	for i > 0 {
 		p := (i - 1) >> 1
-		if h[p].dist <= h[i].dist {
+		if h[p].dist <= val.dist {
 			break
 		}
-		h[p], h[i] = h[i], h[p]
+		h[i] = h[p]
 		i = p
 	}
+	h[i] = val
 }
 
 func (h minHeap) siftDown() {
 	n := len(h)
 	i := 0
+	val := h[0]
 	for {
 		left := (i << 1) + 1
 		if left >= n {
@@ -51,12 +54,13 @@ func (h minHeap) siftDown() {
 		if right := left + 1; right < n && h[right].dist < h[left].dist {
 			smallest = right
 		}
-		if h[i].dist <= h[smallest].dist {
+		if val.dist <= h[smallest].dist {
 			break
 		}
-		h[i], h[smallest] = h[smallest], h[i]
+		h[i] = h[smallest]
 		i = smallest
 	}
+	h[i] = val
 }
 
 type maxHeap []distNode
@@ -88,19 +92,22 @@ func (h maxHeap) replaceMax(x distNode) {
 }
 
 func (h maxHeap) siftUp(i int) {
+	val := h[i]
 	for i > 0 {
 		p := (i - 1) >> 1
-		if h[p].dist >= h[i].dist {
+		if h[p].dist >= val.dist {
 			break
 		}
-		h[p], h[i] = h[i], h[p]
+		h[i] = h[p]
 		i = p
 	}
+	h[i] = val
 }
 
 func (h maxHeap) siftDown() {
 	n := len(h)
 	i := 0
+	val := h[0]
 	for {
 		left := (i << 1) + 1
 		if left >= n {
@@ -110,10 +117,11 @@ func (h maxHeap) siftDown() {
 		if right := left + 1; right < n && h[right].dist > h[left].dist {
 			largest = right
 		}
-		if h[i].dist >= h[largest].dist {
+		if val.dist >= h[largest].dist {
 			break
 		}
-		h[i], h[largest] = h[largest], h[i]
+		h[i] = h[largest]
 		i = largest
 	}
+	h[i] = val
 }

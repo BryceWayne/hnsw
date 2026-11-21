@@ -123,7 +123,9 @@ func readBoundedBytes(r io.Reader, total int) ([]byte, error) {
 	return out, nil
 }
 
-// WriteTo serializes a tombstone-free snapshot of the index in a versioned, checksummed binary format to w.
+// WriteTo serializes a tombstone-free snapshot of the index in a versioned, CRC32-checksummed
+// binary format to w, implementing [io.WriterTo]. Primitive integer types, string, and [16]byte
+// keys use compact binary codecs; other comparable key types use encoding/gob.
 func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 	idx.writeGate.Lock()
 	defer idx.writeGate.Unlock()
@@ -211,14 +213,28 @@ func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 	}
 
 	// Vectors
-	var fbuf [4]byte
-	for _, oldID := range liveIDs {
-		chunk, slot := idx.getChunk(oldID)
-		vec := idx.vectorAt(chunk, slot)
-		for _, v := range vec {
-			binary.LittleEndian.PutUint32(fbuf[:], math.Float32bits(v))
-			if _, err := mw.Write(fbuf[:]); err != nil {
-				return cw.n, err
+	if len(liveIDs) > 0 {
+		chunkFloats := idx.dim
+		if chunkFloats > 4096 {
+			chunkFloats = 4096
+		}
+		vecBuf := make([]byte, chunkFloats*4)
+		for _, oldID := range liveIDs {
+			chunk, slot := idx.getChunk(oldID)
+			vec := idx.vectorAt(chunk, slot)
+			for off := 0; off < len(vec); off += chunkFloats {
+				end := off + chunkFloats
+				if end > len(vec) {
+					end = len(vec)
+				}
+				sub := vec[off:end]
+				buf := vecBuf[:len(sub)*4]
+				for j, v := range sub {
+					binary.LittleEndian.PutUint32(buf[j*4:], math.Float32bits(v))
+				}
+				if _, err := mw.Write(buf); err != nil {
+					return cw.n, err
+				}
 			}
 		}
 	}
@@ -227,6 +243,10 @@ func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 	var lbuf [1]byte
 	var u32buf [4]byte
 	nbrScratch := make([]uint32, 0, idx.mmax)
+	var adjBuf []byte
+	if len(liveIDs) > 0 {
+		adjBuf = make([]byte, (1+idx.mmax)*4)
+	}
 	for newIdx, oldID := range liveIDs {
 		selfNew := uint32(newIdx)
 		chunk, slot := idx.getChunk(oldID)
@@ -264,15 +284,14 @@ func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 					nbrScratch = append(nbrScratch, mapped)
 				}
 			}
-			binary.LittleEndian.PutUint32(u32buf[:], uint32(len(nbrScratch)))
-			if _, err := mw.Write(u32buf[:]); err != nil {
-				return cw.n, err
+			need := (1 + len(nbrScratch)) * 4
+			buf := adjBuf[:need]
+			binary.LittleEndian.PutUint32(buf[0:4], uint32(len(nbrScratch)))
+			for j, nb := range nbrScratch {
+				binary.LittleEndian.PutUint32(buf[(j+1)*4:], nb)
 			}
-			for _, nb := range nbrScratch {
-				binary.LittleEndian.PutUint32(u32buf[:], nb)
-				if _, err := mw.Write(u32buf[:]); err != nil {
-					return cw.n, err
-				}
+			if _, err := mw.Write(buf); err != nil {
+				return cw.n, err
 			}
 		}
 	}
@@ -381,7 +400,9 @@ func (idx *Index[K]) writeKeys(w io.Writer, liveIDs []uint32, keyKind uint8) err
 	return nil
 }
 
-// SaveFile atomically persists the index to path using a temporary file and rename.
+// SaveFile atomically persists a tombstone-free snapshot of the index to path by writing
+// to a temporary file in the target directory and renaming it into place. On error, any
+// temporary file is removed before returning.
 func (idx *Index[K]) SaveFile(path string) error {
 	dir := filepath.Dir(path)
 	f, err := os.CreateTemp(dir, ".hnsw-tmp-*")
@@ -410,8 +431,14 @@ func (idx *Index[K]) SaveFile(path string) error {
 	return nil
 }
 
-// ReadFrom deserializes a versioned, checksummed Index from r, validating structure, key type, and CRC32.
-// Indexes serialized with a custom distance function require WithCustomDistance in opts.
+// ReadFrom deserializes a versioned, CRC32-checksummed [Index] from r using OOM-safe
+// incremental reads, validating header bounds, key type, vector finiteness, graph structure,
+// and trailing checksum.
+//
+// Indexes serialized with a custom distance function require passing [WithCustomDistance] in opts.
+// Callers may also pass [WithEfSearch] or [WithSeed] to override those runtime parameters on load.
+// Format, key-type, structural, or checksum failures return an error wrapping [ErrCorruptedIndex];
+// conflicting metric options return an error wrapping [ErrInvalidConfig].
 func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 	optCfg := newDefaultConfig()
 	for _, opt := range opts {
@@ -548,12 +575,22 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(keys) > 0 {
+		idx.extToInt = make(map[K]uint32, len(keys))
+	}
 
 	// Read vectors chunk by chunk directly into arenaChunks (OOM-safe).
 	dimInt := int(dim)
 	mmaxInt := int(mmax)
 	mInt := int(m)
-	var fbuf [4]byte
+	chunkFloats := dimInt
+	if chunkFloats > 4096 {
+		chunkFloats = 4096
+	}
+	var vecBuf []byte
+	if len(keys) > 0 {
+		vecBuf = make([]byte, chunkFloats*4)
+	}
 
 	for id := 0; id < len(keys); id++ {
 		uid := uint32(id)
@@ -588,15 +625,23 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 
 		off := slot * dimInt
 		vecSlice := chunk.vecs[off : off+dimInt]
-		for j := 0; j < dimInt; j++ {
-			if _, err := io.ReadFull(tr, fbuf[:]); err != nil {
+		for vOff := 0; vOff < dimInt; vOff += chunkFloats {
+			end := vOff + chunkFloats
+			if end > dimInt {
+				end = dimInt
+			}
+			sub := vecSlice[vOff:end]
+			buf := vecBuf[:len(sub)*4]
+			if _, err := io.ReadFull(tr, buf); err != nil {
 				return nil, wrapCorrupt(err)
 			}
-			v := math.Float32frombits(binary.LittleEndian.Uint32(fbuf[:]))
-			if v != v || math.IsInf(float64(v), 0) {
-				return nil, fmt.Errorf("%w: non-finite float in serialized vector", ErrCorruptedIndex)
+			for j := range sub {
+				v := math.Float32frombits(binary.LittleEndian.Uint32(buf[j*4:]))
+				if v != v || math.IsInf(float64(v), 0) {
+					return nil, fmt.Errorf("%w: non-finite float in serialized vector", ErrCorruptedIndex)
+				}
+				sub[j] = v
 			}
-			vecSlice[j] = v
 		}
 		if metric == MetricCosine {
 			chunk.invNorms[slot] = computeInvNorm(vecSlice)
@@ -606,6 +651,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 	// Read graph adjacency.
 	var lbuf [1]byte
 	var u32buf [4]byte
+	var adjBuf []byte
 	for id := 0; id < len(keys); id++ {
 		uid := uint32(id)
 		chunk, slot := idx.getChunk(uid)
@@ -634,13 +680,21 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 				return nil, fmt.Errorf("%w: neighbor degree %d exceeds level bound", ErrCorruptedIndex, deg)
 			}
 
+			need := int(deg) * 4
+			if len(adjBuf) < need {
+				adjBuf = make([]byte, need)
+			}
+			buf := adjBuf[:need]
+			if need > 0 {
+				if _, err := io.ReadFull(tr, buf); err != nil {
+					return nil, wrapCorrupt(err)
+				}
+			}
+
 			if lvl == 0 {
 				base := slot * mmaxInt
 				for j := 0; j < int(deg); j++ {
-					if _, err := io.ReadFull(tr, u32buf[:]); err != nil {
-						return nil, wrapCorrupt(err)
-					}
-					nb := binary.LittleEndian.Uint32(u32buf[:])
+					nb := binary.LittleEndian.Uint32(buf[j*4:])
 					if nb >= liveCount || nb == uid {
 						return nil, fmt.Errorf("%w: invalid neighbor id %d", ErrCorruptedIndex, nb)
 					}
@@ -650,10 +704,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 			} else {
 				edges := make([]uint32, deg)
 				for j := 0; j < int(deg); j++ {
-					if _, err := io.ReadFull(tr, u32buf[:]); err != nil {
-						return nil, wrapCorrupt(err)
-					}
-					nb := binary.LittleEndian.Uint32(u32buf[:])
+					nb := binary.LittleEndian.Uint32(buf[j*4:])
 					if nb >= liveCount || nb == uid {
 						return nil, fmt.Errorf("%w: invalid neighbor id %d", ErrCorruptedIndex, nb)
 					}
@@ -810,8 +861,8 @@ func readKeys[K comparable](r io.Reader, count int, keyKind uint8) ([]K, error) 
 	return keys, nil
 }
 
-// LoadFile opens path and deserializes an Index using ReadFrom.
-// File open errors are returned directly; stream format or checksum errors wrap ErrCorruptedIndex.
+// LoadFile opens path and deserializes an [Index] using [ReadFrom].
+// File open errors are returned directly; stream format or checksum errors wrap [ErrCorruptedIndex].
 func LoadFile[K comparable](path string, opts ...Option) (*Index[K], error) {
 	f, err := os.Open(path)
 	if err != nil {

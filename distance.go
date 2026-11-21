@@ -43,7 +43,11 @@ func (m Metric) String() string {
 // Smaller values indicate closer vectors.
 type DistanceFunc func(a, b []float32) float32
 
-// Euclidean returns the Euclidean (L2) distance between a and b.
+// Euclidean returns the Euclidean (L2) distance between a and b, using a scaled float64
+// fallback when squared sums would overflow or underflow float32.
+//
+// Returns [ErrInvalidDimension] if a is empty, [ErrDimensionMismatch] if len(a) != len(b),
+// or [ErrNaNOrInf] if either vector contains NaN or ±Inf.
 func Euclidean(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
@@ -80,6 +84,9 @@ func euclideanFallback64(a, b []float32) float32 {
 }
 
 // SquaredEuclidean returns the squared Euclidean (L2^2) distance between a and b.
+//
+// Returns [ErrInvalidDimension] if a is empty, [ErrDimensionMismatch] if len(a) != len(b),
+// or [ErrNaNOrInf] if either vector contains NaN or ±Inf.
 func SquaredEuclidean(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
@@ -92,7 +99,11 @@ func SquaredEuclidean(a, b []float32) (float32, error) {
 }
 
 // Cosine returns the cosine distance (1 - cosine similarity) between a and b, clamped to [0, 2].
-// If either vector has zero norm, Cosine returns 1.0, nil.
+// If either vector has zero norm, Cosine returns 1.0, nil. Extreme magnitudes fall back to
+// scaled float64 arithmetic to avoid overflow or underflow.
+//
+// Returns [ErrInvalidDimension] if a is empty, [ErrDimensionMismatch] if len(a) != len(b),
+// or [ErrNaNOrInf] if either vector contains NaN or ±Inf.
 func Cosine(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
@@ -112,8 +123,12 @@ func Cosine(a, b []float32) (float32, error) {
 	return clampCosine(float32(1.0) - dotAB/denom), nil
 }
 
-// DotProduct returns the inner product (sum of element-wise products) of a and b.
-// Note that [MetricDotProduct] ranks index search results by -dot(a, b) so higher inner products appear first.
+// DotProduct returns the raw inner product (sum of element-wise products) of a and b.
+// Note that [MetricDotProduct] ranks index search results by -dot(a, b) so higher inner
+// products appear first.
+//
+// Returns [ErrInvalidDimension] if a is empty, [ErrDimensionMismatch] if len(a) != len(b),
+// or [ErrNaNOrInf] if either vector contains NaN or ±Inf.
 func DotProduct(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
