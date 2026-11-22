@@ -6,6 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v1.0.0] - 2026-11-22
+
+First stable release of `github.com/BryceWayne/hnsw`, committing to Semantic Versioning API stability for the public `Index[K comparable]` API, functional options, sentinel errors, and versioned CRC32 binary persistence format (`v1`/`v2`).
+
+### Changed
+- **Minimum Go Version Bumped to Go 1.27 (`go 1.27.0`)**: Unlocks Go 1.24–1.27 runtime and compiler improvements (Swiss Tables maps, Green Tea GC, size-specialized `<80B` allocator, LICM/known-bits/lookup-table compiler passes, faster `encoding/json` v2 backend), updates `golang.org/x/sys` to `v0.50.0`, and updates CI to Go `1.27` + `golangci-lint` `v2.15`.
+- **16-Way Sharded External Key Map (`hash/maphash.Comparable`)**: Replaced single-lock `extMu` contention with 16 cache-line-padded shards using Go's zero-alloc `hash/maphash.Comparable[K]`, speeding up parallel `Contains` by **`3.6×`** (`59.3 ns → 16.4 ns`, `0 allocs/op`) and parallel `Get` by **`-13.8%`** (`91.4 ns → 78.8 ns`).
+- **Inlined `internal/simd/*Fast` Dispatchers**: Eliminated double-call wrapper overhead on `amd64` AVX2+FMA+F16C and `arm64` NEON hot paths, delivering **`-4.2%` to `-13.7%`** faster search (`10K×128` 12T: **`391,696 q/s`**; `1K×32` 12T: **`1,071,352 q/s`**), **`-18.9%` to `-28.5%`** faster `WriteTo` (`1,887 MB/s`), and **`-6.7%` to `-14.5%`** faster FP16 `ReadFrom` vs Go 1.23.0.
+
 ## [v0.3.0] - 2026-11-22
 
 ### Added

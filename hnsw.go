@@ -2,6 +2,7 @@ package hnsw
 
 import (
 	"fmt"
+	"hash/maphash"
 	"iter"
 	"math"
 	"math/rand"
@@ -27,6 +28,8 @@ const (
 	nodeLockMask     = nodeLockSize - 1
 	readStripes      = 64
 	readMask         = readStripes - 1
+	extShardCount    = 16
+	extShardMask     = extShardCount - 1
 	maxNodeLevel     = 32
 	invalidID        = uint32(math.MaxUint32)
 	emptyEntry       = uint64(math.MaxUint64)
@@ -35,6 +38,12 @@ const (
 type paddedRWMutex struct {
 	mu sync.RWMutex
 	_  [64 - unsafe.Sizeof(sync.RWMutex{})%64]byte
+}
+
+type extShard[K comparable] struct {
+	mu sync.RWMutex
+	m  map[K]uint32
+	_  [64 - (unsafe.Sizeof(sync.RWMutex{})+unsafe.Sizeof(map[K]uint32(nil)))%64]byte
 }
 
 type dirPage[K comparable] struct {
@@ -128,8 +137,9 @@ type Index[K comparable] struct {
 	seed           int64
 
 	dir            [dirL1Size]atomic.Pointer[dirPage[K]]
-	extMu          sync.RWMutex
-	extToInt       map[K]uint32
+	keySeed        maphash.Seed
+	allocMu        sync.Mutex
+	extShards      [extShardCount]extShard[K]
 	nextID         atomic.Uint32
 	liveCount      atomic.Int64
 	tombstoneCount atomic.Int64
@@ -181,9 +191,10 @@ func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 		quant:          cfg.quant,
 		heuristic:      cfg.heuristic,
 		seed:           seed,
-		extToInt:       make(map[K]uint32, cfg.initialCapacity),
+		keySeed:        maphash.MakeSeed(),
 		rng:            rand.New(rand.NewSource(seed)),
 	}
+	idx.initExtShards(cfg.initialCapacity)
 	idx.efSearch.Store(int64(cfg.efSearch))
 	idx.entryState.Store(emptyEntry)
 	idx.initScratchPool()
@@ -191,6 +202,24 @@ func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 		idx.preallocateChunks(cfg.initialCapacity)
 	}
 	return idx, nil
+}
+
+func (idx *Index[K]) initExtShards(capHint int) {
+	perShard := 0
+	if capHint > 0 {
+		perShard = (capHint + extShardCount - 1) / extShardCount
+	}
+	for i := range idx.extShards {
+		if perShard > 0 {
+			idx.extShards[i].m = make(map[K]uint32, perShard)
+		} else {
+			idx.extShards[i].m = make(map[K]uint32)
+		}
+	}
+}
+
+func (idx *Index[K]) extShardFor(id K) *extShard[K] {
+	return &idx.extShards[maphash.Comparable(idx.keySeed, id)&extShardMask]
 }
 
 func (idx *Index[K]) newArenaChunk() *arenaChunk[K] {
@@ -374,11 +403,19 @@ func (idx *Index[K]) distQueryAt(chunk *arenaChunk[K], slot int, query []float32
 func (idx *Index[K]) distVecs(va []float32, invA float32, vb []float32, invB float32) float32 {
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
+		if simd.HasFastF32() {
+			return simd.L2SquaredFast(va, vb)
+		}
 		return simd.L2Squared(va, vb)
 	case MetricCosine:
 		return cosineWithInvNorms(va, vb, invA, invB)
 	case MetricDotProduct:
-		d := simd.DotProduct(va, vb)
+		var d float32
+		if simd.HasFastF32() {
+			d = simd.DotProductFast(va, vb)
+		} else {
+			d = simd.DotProduct(va, vb)
+		}
 		if d == 0 {
 			return 0
 		}
@@ -391,11 +428,19 @@ func (idx *Index[K]) distVecs(va []float32, invA float32, vb []float32, invB flo
 func (idx *Index[K]) distVecsF16(va []uint16, invA float32, vb []uint16, invB float32, scratch *searchScratch) float32 {
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
+		if simd.HasFastF16() {
+			return simd.L2SquaredF16F16Fast(va, vb)
+		}
 		return simd.L2SquaredF16F16(va, vb)
 	case MetricCosine:
 		return cosineWithInvNormsF16F16(va, vb, invA, invB)
 	case MetricDotProduct:
-		d := simd.DotProductF16F16(va, vb)
+		var d float32
+		if simd.HasFastF16() {
+			d = simd.DotProductF16F16Fast(va, vb)
+		} else {
+			d = simd.DotProductF16F16(va, vb)
+		}
 		if d == 0 {
 			return 0
 		}
@@ -547,7 +592,6 @@ func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
 	}
 
 	idx.nextID.Store(newID + 1)
-	idx.extToInt[extID] = newID
 	idx.liveCount.Add(1)
 	return newID
 }
@@ -575,21 +619,25 @@ func (idx *Index[K]) tryInsertFast(id K, vec []float32, scratch *searchScratch) 
 	idx.readStripes[scratch.stripe].mu.RLock()
 	defer idx.readStripes[scratch.stripe].mu.RUnlock()
 
-	idx.extMu.RLock()
-	_, exists := idx.extToInt[id]
-	idx.extMu.RUnlock()
+	sh := idx.extShardFor(id)
+	sh.mu.RLock()
+	_, exists := sh.m[id]
+	sh.mu.RUnlock()
 	if exists {
 		return false
 	}
 
 	lvl := idx.randomLevel()
-	idx.extMu.Lock()
-	if _, exists = idx.extToInt[id]; exists {
-		idx.extMu.Unlock()
+	sh.mu.Lock()
+	if _, exists = sh.m[id]; exists {
+		sh.mu.Unlock()
 		return false
 	}
+	idx.allocMu.Lock()
 	newID := idx.allocSlot(id, vec, lvl)
-	idx.extMu.Unlock()
+	idx.allocMu.Unlock()
+	sh.m[id] = newID
+	sh.mu.Unlock()
 
 	idx.insertNode(newID, vec, int(lvl), scratch, false)
 	return true
@@ -610,11 +658,13 @@ func (idx *Index[K]) insertValidatedWithScratch(id K, vec []float32, scratch *se
 	idx.acquireExclusive()
 	defer idx.releaseExclusive()
 
-	if oldID, existed := idx.extToInt[id]; existed {
+	sh := idx.extShardFor(id)
+	if oldID, existed := sh.m[id]; existed {
 		idx.deleteInternal(id, oldID, scratch)
 	}
 	lvl := idx.randomLevel()
 	newID := idx.allocSlot(id, vec, lvl)
+	sh.m[id] = newID
 	idx.insertNode(newID, vec, int(lvl), scratch, true)
 }
 
@@ -1177,7 +1227,8 @@ func (idx *Index[K]) Delete(id K) bool {
 	idx.acquireExclusive()
 	defer idx.releaseExclusive()
 
-	oldID, ok := idx.extToInt[id]
+	sh := idx.extShardFor(id)
+	oldID, ok := sh.m[id]
 	if !ok {
 		return false
 	}
@@ -1186,7 +1237,7 @@ func (idx *Index[K]) Delete(id K) bool {
 }
 
 func (idx *Index[K]) deleteInternal(extID K, oldID uint32, scratch *searchScratch) {
-	delete(idx.extToInt, extID)
+	delete(idx.extShardFor(extID).m, extID)
 	if idx.markDeleted(oldID) {
 		idx.liveCount.Add(-1)
 		idx.tombstoneCount.Add(1)
@@ -1264,9 +1315,10 @@ func (idx *Index[K]) Get(id K) ([]float32, bool) {
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
 
-	idx.extMu.RLock()
-	intID, ok := idx.extToInt[id]
-	idx.extMu.RUnlock()
+	sh := idx.extShardFor(id)
+	sh.mu.RLock()
+	intID, ok := sh.m[id]
+	sh.mu.RUnlock()
 	if !ok {
 		return nil, false
 	}
@@ -1289,9 +1341,10 @@ func (idx *Index[K]) Contains(id K) bool {
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
 
-	idx.extMu.RLock()
-	intID, ok := idx.extToInt[id]
-	idx.extMu.RUnlock()
+	sh := idx.extShardFor(id)
+	sh.mu.RLock()
+	intID, ok := sh.m[id]
+	sh.mu.RUnlock()
 	return ok && !idx.isDeleted(intID)
 }
 
@@ -1302,12 +1355,19 @@ func (idx *Index[K]) Keys() []K {
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
 
-	idx.extMu.RLock()
-	keys := make([]K, 0, len(idx.extToInt))
-	for k := range idx.extToInt {
-		keys = append(keys, k)
+	live := int(idx.liveCount.Load())
+	if live < 0 {
+		live = 0
 	}
-	idx.extMu.RUnlock()
+	keys := make([]K, 0, live)
+	for i := range idx.extShards {
+		sh := &idx.extShards[i]
+		sh.mu.RLock()
+		for k := range sh.m {
+			keys = append(keys, k)
+		}
+		sh.mu.RUnlock()
+	}
 	return keys
 }
 
@@ -1361,7 +1421,7 @@ func (idx *Index[K]) Clear() {
 	for i := 0; i < dirL1Size; i++ {
 		idx.dir[i].Store(nil)
 	}
-	idx.extToInt = make(map[K]uint32)
+	idx.initExtShards(0)
 	idx.nextID.Store(0)
 	idx.liveCount.Store(0)
 	idx.tombstoneCount.Store(0)
@@ -1382,7 +1442,7 @@ func (idx *Index[K]) Compact() error {
 		for i := 0; i < dirL1Size; i++ {
 			idx.dir[i].Store(nil)
 		}
-		idx.extToInt = make(map[K]uint32)
+		idx.initExtShards(0)
 		idx.nextID.Store(0)
 		idx.tombstoneCount.Store(0)
 		idx.entryState.Store(emptyEntry)
@@ -1404,7 +1464,7 @@ func (idx *Index[K]) Compact() error {
 	}
 
 	var newPages [dirL1Size]*dirPage[K]
-	newExtToInt := make(map[K]uint32, len(liveOld))
+	idx.initExtShards(len(liveOld))
 	bestEntryID := uint32(0)
 	bestEntryLevel := -1
 
@@ -1448,7 +1508,7 @@ func (idx *Index[K]) Compact() error {
 		}
 		extKey := oldChunk.intToExt[oldSlot]
 		newChunk.intToExt[newSlot] = extKey
-		newExtToInt[extKey] = newID
+		idx.extShardFor(extKey).m[extKey] = newID
 
 		maxLvl := oldChunk.maxLevels[oldSlot]
 		newChunk.maxLevels[newSlot] = maxLvl
@@ -1518,7 +1578,6 @@ func (idx *Index[K]) Compact() error {
 	for i := 0; i < dirL1Size; i++ {
 		idx.dir[i].Store(newPages[i])
 	}
-	idx.extToInt = newExtToInt
 	idx.nextID.Store(uint32(len(liveOld)))
 	idx.tombstoneCount.Store(0)
 	idx.entryState.Store((uint64(bestEntryLevel) << 32) | uint64(bestEntryID))

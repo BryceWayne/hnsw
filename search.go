@@ -124,6 +124,8 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 
 	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
 	isF16 := idx.quant == QuantFloat16
+	fastF32 := simd.HasFastF32()
+	fastF16 := simd.HasFastF16()
 	iter := 0
 	for len(scratch.candidates) > 0 {
 		if iter&63 == 0 && ctx != nil {
@@ -148,7 +150,13 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 			var d float32
 			if isL2 {
 				if isF16 {
-					d = simd.L2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+					if fastF16 {
+						d = simd.L2SquaredF16F32Fast(idx.vectorF16At(chunk, slot), query)
+					} else {
+						d = simd.L2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+					}
+				} else if fastF32 {
+					d = simd.L2SquaredFast(idx.vectorAt(chunk, slot), query)
 				} else {
 					d = simd.L2Squared(idx.vectorAt(chunk, slot), query)
 				}

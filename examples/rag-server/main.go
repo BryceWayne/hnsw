@@ -1,4 +1,4 @@
-// Command rag-server demonstrates a production-style, zero-dependency Go 1.23
+// Command rag-server demonstrates a production-style, zero-dependency Go 1.27
 // HTTP microservice backed by github.com/BryceWayne/hnsw.
 //
 // It showcases:

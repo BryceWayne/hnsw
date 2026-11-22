@@ -3,7 +3,7 @@
 [![Go](https://github.com/BryceWayne/hnsw/actions/workflows/go.yml/badge.svg)](https://github.com/BryceWayne/hnsw/actions/workflows/go.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/BryceWayne/hnsw.svg)](https://pkg.go.dev/github.com/BryceWayne/hnsw)
 [![GitHub Release](https://img.shields.io/github/v/release/BryceWayne/hnsw)](https://github.com/BryceWayne/hnsw/releases)
-![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8?logo=go)
+![Go Version](https://img.shields.io/badge/go-1.27+-00ADD8?logo=go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
 **`hnsw`** is a concurrency-safe, zero-allocation-hot-path, **embeddable Go vector database library** implementing Hierarchical Navigable Small World (HNSW) approximate nearest neighbor (ANN) search.
@@ -31,28 +31,28 @@ Designed strictly as an embeddable Go package with minimal dependencies (`golang
 
 ### Head-to-Head Go Benchmarks (`benchmarks/`)
 
-Measured in the isolated [`benchmarks/`](./benchmarks) sub-module (`go1.23.3 linux/amd64`, **Intel Core i9-12900K**, 12 CPUs, Cosine distance, `M=16`, `EfConstruction=200`, `EfSearch=64`, `k=10`, dimension-invariant clustered embeddings). Run `cd benchmarks && go test -run=^$ -bench=. -benchmem .` to reproduce.
+Measured in the isolated [`benchmarks/`](./benchmarks) sub-module (`go1.27.4 linux/amd64`, **Intel Core i9-12900K**, 12 CPUs, Cosine distance, `M=16`, `EfConstruction=200`, `EfSearch=64`, `k=10`, dimension-invariant clustered embeddings). Run `cd benchmarks && go test -run=^$ -bench=. -benchmem .` to reproduce.
 
 | Dataset & Mode | Engine | Throughput | 1T p50 / p99 | `Recall@10` | `allocs/op` |
 |---|---|---|---|---|---|
-| **`10K × dim=128`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`289,436 q/s`** | `31.3 / 42.5 µs` | **`0.999`** | **`0`** |
-| `10K × dim=128` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`268,601 q/s`** | `31.7 / 44.7 µs` | **`1.000`** | **`0`** |
-| `10K × dim=128` (12T) | `fogfish/hnsw` | `132,031 q/s` | `49.9 / 199.0 µs` | `0.876` | `10` |
-| `10K × dim=128` (12T) | `coder/hnsw` | `269,978 q/s` | `20.2 / 63.5 µs` | `0.167*` | `223` |
-| **`10K × dim=768`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`118,147 q/s`** | `76.7 / 115.7 µs` | **`0.999`** | **`0`** |
-| `10K × dim=768` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`60,350 q/s`** | `123.9 / 250.3 µs` | **`1.000`** | **`0`** |
-| `10K × dim=768` (12T) | `fogfish/hnsw` | `54,511 q/s` | `215.4 / 685.6 µs` | `0.315` | `10` |
-| `10K × dim=768` (12T) | `coder/hnsw` | `247,402 q/s` | `27.4 / 110.7 µs` | `0.130*` | `221` |
-| **`5K × dim=1536`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`77,328 q/s`** | `111.3 / 247.5 µs` | **`1.000`** | **`0`** |
-| `5K × dim=1536` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`36,731 q/s`** | `224.0 / 410.3 µs` | **`1.000`** | **`0`** |
-| `5K × dim=1536` (12T) | `fogfish/hnsw` | `24,473 q/s` | `453.6 / 1,168 µs` | `0.318` | `10` |
-| `5K × dim=1536` (12T) | `coder/hnsw` | `231,965 q/s` | `31.6 / 61.9 µs` | `0.214*` | `208` |
-| **Mixed 80% R / 20% W** (12T, `5K×128`) | **`BryceWayne/hnsw` (native locks)** | **`90,277 ops/s`** | — | — | **`0`** |
-| Mixed 80% R / 20% W (12T, `5K×128`) | `coder/hnsw` (`sync.RWMutex`) | `39,403 ops/s` | — | — | `231` |
-| Mixed 80% R / 20% W (12T, `5K×128`) | `fogfish/hnsw` (`sync.RWMutex`) | `9,166 ops/s` | — | — | `39` |
-| **Build + Owned Heap** (`5K×768`) | **`BryceWayne/hnsw` (FP16, `InsertBatch`)** | **`13,441 vecs/s` (`372 ms`)** | — | **`9.15 MB` RAM** | — |
-| Build + Owned Heap (`5K×768`) | `coder/hnsw` (`Add`) | `14,142 vecs/s` (`354 ms`) | — | `19.83 MB` RAM | — |
-| Build + Owned Heap (`5K×768`) | `fogfish/hnsw` (`Insert`) | `1,567 vecs/s` (`3,191 ms`) | — | `15.73 MB` RAM | — |
+| **`10K × dim=128`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`280,426 q/s`** | `30.2 / 51.2 µs` | **`0.999`** | **`0`** |
+| `10K × dim=128` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`258,732 q/s`** | `31.9 / 66.8 µs` | **`1.000`** | **`0`** |
+| `10K × dim=128` (12T) | `fogfish/hnsw` | `117,855 q/s` | `55.8 / 360.6 µs` | `0.876` | `10` |
+| `10K × dim=128` (12T) | `coder/hnsw` | `255,232 q/s` | `19.3 / 108.9 µs` | `0.132*` | `226` |
+| **`10K × dim=768`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`113,071 q/s`** | `97.6 / 224.9 µs` | **`0.999`** | **`0`** |
+| `10K × dim=768` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`51,203 q/s`** | `133.9 / 338.4 µs` | **`1.000`** | **`0`** |
+| `10K × dim=768` (12T) | `fogfish/hnsw` | `50,543 q/s` | `166.4 / 536.7 µs` | `0.315` | `10` |
+| `10K × dim=768` (12T) | `coder/hnsw` | `232,720 q/s` | `23.5 / 39.3 µs` | `0.118*` | `225` |
+| **`5K × dim=1536`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`70,912 q/s`** | `112.3 / 180.4 µs` | **`1.000`** | **`0`** |
+| `5K × dim=1536` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`26,426 q/s`** | `216.0 / 500.9 µs` | **`1.000`** | **`0`** |
+| `5K × dim=1536` (12T) | `fogfish/hnsw` | `23,847 q/s` | `442.1 / 856.5 µs` | `0.318` | `10` |
+| `5K × dim=1536` (12T) | `coder/hnsw` | `210,970 q/s` | `27.7 / 86.4 µs` | `0.180*` | `208` |
+| **Mixed 80% R / 20% W** (12T, `5K×128`) | **`BryceWayne/hnsw` (native locks)** | **`90,058 ops/s`** | — | — | **`0`** |
+| Mixed 80% R / 20% W (12T, `5K×128`) | `coder/hnsw` (`sync.RWMutex`) | `40,881 ops/s` | — | — | `236` |
+| Mixed 80% R / 20% W (12T, `5K×128`) | `fogfish/hnsw` (`sync.RWMutex`) | `8,288 ops/s` | — | — | `39` |
+| **Build + Owned Heap** (`5K×768`) | **`BryceWayne/hnsw` (FP16, `InsertBatch`)** | **`13,122 vecs/s` (`381 ms`)** | — | **`9.18 MB` RAM** | — |
+| Build + Owned Heap (`5K×768`) | `coder/hnsw` (`Add`) | `14,298 vecs/s` (`350 ms`) | — | `19.45 MB` RAM | — |
+| Build + Owned Heap (`5K×768`) | `fogfish/hnsw` (`Insert`) | `1,523 vecs/s` (`3,283 ms`) | — | `15.73 MB` RAM | — |
 
 *\*`coder/hnsw v0.6.1` terminates layer-0 beam search early whenever a popped candidate fails to beat `result.Min().dist` (causing low recall on clustered embeddings despite fast traversal). All libraries were configured with their documented defaults and identical `M=16`, `EfConstruction=200`, `EfSearch=64`.*
 
@@ -77,7 +77,7 @@ Measured in the isolated [`benchmarks/`](./benchmarks) sub-module (`go1.23.3 lin
 
 ## Installation
 
-Requires **Go 1.23+**:
+Requires **Go 1.27+**:
 
 ```bash
 go get github.com/BryceWayne/hnsw
@@ -260,7 +260,7 @@ customIdx, err := hnsw.New[string](128, hnsw.WithCustomDistance(l1))
 
 | Example | Path | What It Shows |
 |---|---|---|
-| **RAG HTTP Microservice** | [`examples/rag-server`](./examples/rag-server) | Zero-dependency Go 1.23 `net/http` server with multi-tenant `SearchFilterInto` + `sync.Pool`, `WithContext` deadlines, `WithMaxDistance` cutoffs, background compaction via `TombstoneRatio()`, `/stats`, and graceful `SIGTERM` `SaveFile`/`LoadFile`. |
+| **RAG HTTP Microservice** | [`examples/rag-server`](./examples/rag-server) | Zero-dependency Go 1.27 `net/http` server with multi-tenant `SearchFilterInto` + `sync.Pool`, `WithContext` deadlines, `WithMaxDistance` cutoffs, background compaction via `TombstoneRatio()`, `/stats`, and graceful `SIGTERM` `SaveFile`/`LoadFile`. |
 | **LLM Semantic Cache** | [`examples/semantic-cache`](./examples/semantic-cache) | `MetricCosine` + `QuantFloat16` + `WithMaxDistance(0.08)` prompt similarity cache with TTL eviction (`DeleteBatch` + `Compact`). |
 | **CLI Benchmark Demo** | [`examples/main.go`](./examples/main.go) | Standalone flag-driven build, search, filter, compact, and persistence smoke test. |
 
@@ -379,7 +379,16 @@ HNSW builds a hierarchical proximity graph where upper layers act as sparse long
 
 ## Measured Recall & Benchmarks
 
-All measurements below were collected directly from this codebase (`go1.23.3 linux/amd64` on **12th Gen Intel(R) Core(TM) i9-12900K**, 12 CPUs) using `go test -run=^$ -bench=. -benchmem -benchtime=100ms -count=5 .` (medians reported) and `go test -run=TestRecall10K -v .`.
+All measurements below were collected directly from this codebase (`go1.27.4 linux/amd64` on **12th Gen Intel(R) Core(TM) i9-12900K**, 12 CPUs) using `go test -run=^$ -bench=. -benchmem -benchtime=100ms -count=5 .` (medians reported) and `go test -run=TestRecall10K -v .`.
+
+### Go 1.27.4 Upgrade Highlights (Verified vs Go 1.23.0 Baseline)
+
+Upgrading to **Go 1.27** (Swiss Tables maps, Green Tea GC, size-specialized `<80B` allocator, LICM/known-bits/lookup-table compiler passes) alongside 16-way `maphash.Comparable` key sharding and inlined `internal/simd/*Fast` dispatch delivered measurable speedups on identical hardware:
+
+- **Parallel `Contains` (12T)**: `59.3 ns` → **`16.4 ns`** (**`3.6×` faster**, `0 B/op`, `0 allocs/op`)
+- **Parallel `Get` (12T)**: `91.4 ns` → **`78.8 ns`** (**`-13.8%`**, `1 alloc/op`)
+- **Binary `WriteTo` (`10K×128`)**: `4.88 ms` → **`3.49 ms`** (**`-28.5%`**, **`1,887 MB/s`**); FP16 `WriteTo` (**`-18.9%` to `-20.6%`**), FP16 `ReadFrom` (**`-6.7%` to `-14.5%`**)
+- **Parallel `Search` (`10K×128`, 12T)**: `2,959 ns` → **`2,553 ns`** (**`-13.7%`**, **`391,696 q/s`**); `1K×32` (12T): `1,018 ns` → **`933 ns`** (**`-8.3%`**, **`1,071,352 q/s`**)
 
 ### Recall@K & Query Latency (`BenchmarkRecallAndLatency`, 10K Clustered Vectors, `dim=128`, `M=16`, `Mmax=32`, `EfConstruction=200`, `k=10`)
 

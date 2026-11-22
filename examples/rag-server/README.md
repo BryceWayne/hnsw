@@ -1,6 +1,6 @@
 # Production RAG HTTP Microservice Example
 
-A zero-dependency Go 1.23 `net/http` vector search microservice built directly on `github.com/BryceWayne/hnsw`.
+A zero-dependency Go 1.27 `net/http` vector search microservice built directly on `github.com/BryceWayne/hnsw`.
 
 ## What It Demonstrates
 
