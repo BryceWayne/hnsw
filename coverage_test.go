@@ -6,8 +6,11 @@ import (
 	"errors"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -442,4 +445,339 @@ func TestInternalHelpersCoverage(t *testing.T) {
 	if !s.visit(200) || s.visit(200) {
 		t.Fatal("expected visit(200) to grow visited table and deduplicate second call")
 	}
+}
+
+func TestKeysAllAndSetEfSearch(t *testing.T) {
+	idx, err := New[int](3, WithM(8), WithEfConstruction(32), WithEfSearch(16), WithMetric(MetricCosine), WithSeed(7))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Empty index checks.
+	if got := idx.Keys(); len(got) != 0 {
+		t.Fatalf("empty Keys() = %v, want empty", got)
+	}
+	for range idx.All() {
+		t.Fatal("empty All() should yield zero items")
+	}
+
+	// SetEfSearch validation and persistence.
+	if err := idx.SetEfSearch(0); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("SetEfSearch(0) err = %v, want ErrInvalidConfig", err)
+	}
+	if err := idx.SetEfSearch(-5); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("SetEfSearch(-5) err = %v, want ErrInvalidConfig", err)
+	}
+	if err := idx.SetEfSearch(64); err != nil {
+		t.Fatalf("SetEfSearch(64) err = %v", err)
+	}
+	if got := idx.Stats().EfSearch; got != 64 {
+		t.Fatalf("Stats().EfSearch = %d, want 64", got)
+	}
+
+	for i := 1; i <= 10; i++ {
+		if err := idx.Insert(i, []float32{float32(i) * 2, 1, 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx.Delete(5)
+
+	keys := idx.Keys()
+	slices.Sort(keys)
+	wantKeys := []int{1, 2, 3, 4, 6, 7, 8, 9, 10}
+	if !slices.Equal(keys, wantKeys) {
+		t.Fatalf("Keys() = %v, want %v", keys, wantKeys)
+	}
+
+	// Verify All() yields independent lossless copies and supports early break.
+	seen := make(map[int][]float32)
+	for id, vec := range idx.All() {
+		seen[id] = vec
+		vec[0] = -999 // mutating yielded copy must not corrupt stored vector
+	}
+	if len(seen) != len(wantKeys) {
+		t.Fatalf("All() yielded %d items, want %d", len(seen), len(wantKeys))
+	}
+	if got, ok := idx.Get(1); !ok || got[0] != 2 {
+		t.Fatalf("stored vector mutated via All(): ok=%v vec=%v", ok, got)
+	}
+
+	count := 0
+	for range idx.All() {
+		count++
+		if count == 3 {
+			break
+		}
+	}
+	if count != 3 {
+		t.Fatalf("early break yielded %d items, want 3", count)
+	}
+
+	// Mutating inside All() must not deadlock and deleted keys are skipped.
+	visited := 0
+	for id := range idx.All() {
+		visited++
+		if visited == 1 {
+			// Delete all remaining keys except id.
+			for _, k := range wantKeys {
+				if k != id {
+					idx.Delete(k)
+				}
+			}
+		}
+	}
+	if visited != 1 {
+		t.Fatalf("All() after deleting remaining keys yielded %d items, want 1", visited)
+	}
+
+	// Verify SetEfSearch survives WriteTo -> ReadFrom.
+	var buf bytes.Buffer
+	if _, err := idx.WriteTo(&buf); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := ReadFrom[int](&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reloaded.Stats().EfSearch; got != 64 {
+		t.Fatalf("reloaded EfSearch = %d, want 64", got)
+	}
+
+	// Concurrent SetEfSearch + Search + Keys + All under -race.
+	for i := 0; i < 32; i++ {
+		if err := reloaded.Insert(i+100, []float32{float32(i + 1), 1, 2}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var wg sync.WaitGroup
+	wg.Add(3)
+	go func() {
+		defer wg.Done()
+		for i := 1; i <= 50; i++ {
+			_ = reloaded.SetEfSearch(16 + (i % 64))
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 50; i++ {
+			_, _ = reloaded.Search([]float32{1, 1, 2}, 5)
+		}
+	}()
+	go func() {
+		defer wg.Done()
+		for i := 0; i < 10; i++ {
+			_ = reloaded.Keys()
+			for range reloaded.All() {
+				break
+			}
+		}
+	}()
+	wg.Wait()
+}
+
+func TestGetAndContainsAllocs(t *testing.T) {
+	if raceDetectorEnabled {
+		t.Skip("allocation count disabled under -race")
+	}
+	idx, err := New[int](8, WithM(8), WithEfConstruction(32), WithSeed(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 32; i++ {
+		if err := idx.Insert(i, []float32{float32(i), 1, 2, 3, 4, 5, 6, 7}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	containsAllocs := testing.AllocsPerRun(200, func() {
+		if !idx.Contains(7) {
+			t.Fatal("expected Contains(7) == true")
+		}
+	})
+	if containsAllocs != 0 {
+		t.Fatalf("Contains allocs/op = %.1f, want 0", containsAllocs)
+	}
+
+	getAllocs := testing.AllocsPerRun(200, func() {
+		v, ok := idx.Get(7)
+		if !ok || len(v) != 8 {
+			t.Fatal("expected Get(7) to succeed")
+		}
+	})
+	if getAllocs > 1 {
+		t.Fatalf("Get allocs/op = %.1f, want <= 1", getAllocs)
+	}
+}
+
+func TestSerializeChunkedFixedKeysAllTypes(t *testing.T) {
+	// Test >512 keys to cross the 4096-byte key chunk boundary in writeFixedKeys/readFixedKeys.
+	const n = 600
+	idx, err := New[int](2, WithM(4), WithEfConstruction(16), WithSeed(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < n; i++ {
+		if err := idx.Insert(i, []float32{float32(i), float32(i % 13)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := idx.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo failed: %v", err)
+	}
+	reloaded, err := ReadFrom[int](bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		t.Fatalf("ReadFrom failed: %v", err)
+	}
+	if reloaded.Len() != n {
+		t.Fatalf("reloaded.Len() = %d, want %d", reloaded.Len(), n)
+	}
+	for i := 0; i < n; i++ {
+		if !reloaded.Contains(i) {
+			t.Fatalf("reloaded missing key %d", i)
+		}
+	}
+
+	// Verify truncated fixed-key stream returns ErrCorruptedIndex.
+	trunc := buf.Bytes()[:120]
+	if _, err := ReadFrom[int](bytes.NewReader(trunc)); !errors.Is(err, ErrCorruptedIndex) {
+		t.Fatalf("truncated fixed keys err = %v, want ErrCorruptedIndex", err)
+	}
+}
+
+func TestDeleteBatchedRepairPreservesRecallAndGraph(t *testing.T) {
+	rng := rand.New(rand.NewSource(99))
+	idx, err := New[int](16, WithM(8), WithMmax(16), WithEfConstruction(64), WithSeed(99))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const total = 300
+	for i := 0; i < total; i++ {
+		v := make([]float32, 16)
+		for j := range v {
+			v[j] = rng.Float32()
+		}
+		if err := idx.Insert(i, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// Single Delete + DeleteBatch across dense upper and layer-0 neighborhoods.
+	for i := 0; i < 20; i++ {
+		if !idx.Delete(i) {
+			t.Fatalf("expected Delete(%d) == true", i)
+		}
+	}
+	batchIDs := make([]int, 0, 50)
+	for i := 20; i < 70; i++ {
+		batchIDs = append(batchIDs, i)
+	}
+	if removed := idx.DeleteBatch(batchIDs); removed != 50 {
+		t.Fatalf("DeleteBatch removed %d, want 50", removed)
+	}
+	if idx.Len() != total-70 {
+		t.Fatalf("Len() = %d, want %d", idx.Len(), total-70)
+	}
+
+	// Every remaining node should be reachable by exact query.
+	for i := 70; i < 120; i++ {
+		vec, ok := idx.Get(i)
+		if !ok {
+			t.Fatalf("missing key %d", i)
+		}
+		res, err := idx.Search(vec, 1, WithSearchEf(64))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res) != 1 || res[0].ID != i {
+			t.Fatalf("Search for live key %d returned %+v", i, res)
+		}
+	}
+}
+
+func BenchmarkDelete(b *testing.B) {
+	rng := rand.New(rand.NewSource(42))
+	const n = 1000
+	const dim = 128
+	vecs := make([][]float32, n)
+	for i := range vecs {
+		v := make([]float32, dim)
+		for j := range v {
+			v[j] = rng.Float32()
+		}
+		vecs[i] = v
+	}
+	idx, err := New[int](dim, WithM(16), WithMmax(32), WithEfConstruction(100), WithSeed(42))
+	if err != nil {
+		b.Fatal(err)
+	}
+	items := make([]Item[int], n)
+	for i := range items {
+		items[i] = Item[int]{ID: i, Vector: vecs[i]}
+	}
+	if err := idx.InsertBatch(items); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		id := i % n
+		idx.Delete(id)
+		b.StopTimer()
+		if err := idx.Insert(id, vecs[id]); err != nil {
+			b.Fatal(err)
+		}
+		b.StartTimer()
+	}
+}
+
+func BenchmarkGet(b *testing.B) {
+	idx, err := New[int](128, WithM(16), WithEfConstruction(64), WithSeed(42))
+	if err != nil {
+		b.Fatal(err)
+	}
+	vec := make([]float32, 128)
+	for i := 0; i < 1000; i++ {
+		vec[0] = float32(i)
+		if err := idx.Insert(i, vec); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			if _, ok := idx.Get(i % 1000); !ok {
+				b.Fatal("Get failed")
+			}
+			i++
+		}
+	})
+}
+
+func BenchmarkContains(b *testing.B) {
+	idx, err := New[int](128, WithM(16), WithEfConstruction(64), WithSeed(42))
+	if err != nil {
+		b.Fatal(err)
+	}
+	vec := make([]float32, 128)
+	for i := 0; i < 1000; i++ {
+		vec[0] = float32(i)
+		if err := idx.Insert(i, vec); err != nil {
+			b.Fatal(err)
+		}
+	}
+	b.ReportAllocs()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			if !idx.Contains(i % 1000) {
+				b.Fatal("Contains failed")
+			}
+			i++
+		}
+	})
 }

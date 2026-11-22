@@ -29,7 +29,7 @@ func (idx *Index[K]) SearchFilter(query []float32, k int, filter func(id K) bool
 }
 
 func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error) {
-	ef := idx.efSearch
+	ef := int(idx.efSearch.Load())
 	var ctx context.Context
 	if len(opts) > 0 {
 		sc := defaultSearchConfig()
