@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"log"
+	"slices"
 
 	"github.com/BryceWayne/hnsw"
 )
@@ -257,4 +258,60 @@ func ExampleWithCustomDistance() {
 	fmt.Printf("id=%s l1=%.1f\n", res[0].ID, res[0].Distance)
 	// Output:
 	// id=a l1=1.0
+}
+
+func ExampleIndex_Keys() {
+	idx, err := hnsw.New[string](2, hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, id := range []string{"c", "a", "b"} {
+		if err := idx.Insert(id, []float32{1, 0}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	keys := idx.Keys()
+	slices.Sort(keys)
+	fmt.Println(keys)
+	// Output:
+	// [a b c]
+}
+
+func ExampleIndex_All() {
+	idx, err := hnsw.New[int](2, hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for id := 1; id <= 3; id++ {
+		if err := idx.Insert(id, []float32{float32(id), 0}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	seen := make([]int, 0, idx.Len())
+	for id, vec := range idx.All() {
+		if vec[0] == float32(id) {
+			seen = append(seen, id)
+		}
+	}
+	slices.Sort(seen)
+	fmt.Println(seen)
+	// Output:
+	// [1 2 3]
+}
+
+func ExampleIndex_SetEfSearch() {
+	idx, err := hnsw.New[int](2, hnsw.WithEfSearch(32), hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	before := idx.Stats().EfSearch
+	if err := idx.SetEfSearch(128); err != nil {
+		log.Fatal(err)
+	}
+	after := idx.Stats().EfSearch
+	fmt.Printf("before=%d after=%d\n", before, after)
+	// Output:
+	// before=32 after=128
 }

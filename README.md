@@ -263,8 +263,8 @@ go run ./examples \
 ### `Index[K comparable]` Methods & Top-Level Functions
 
 - **Constructors / Loaders**: `New[K](dim int, opts ...Option) (*Index[K], error)`, `ReadFrom[K](r io.Reader, opts ...Option) (*Index[K], error)`, `LoadFile[K](path string, opts ...Option) (*Index[K], error)`
-- **Write / Mutate**: `Insert(id K, vec []float32) error`, `InsertBatch(items []Item[K], opts ...SearchOption) error`, `Delete(id K) bool`, `DeleteBatch(ids []K) int`, `Compact() error`, `Clear()`
-- **Query / Inspect**: `Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error)`, `Get(id K) ([]float32, bool)`, `Contains(id K) bool`, `Len() int`, `Dim() int`, `Stats() IndexStats`
+- **Write / Mutate**: `Insert(id K, vec []float32) error`, `InsertBatch(items []Item[K], opts ...SearchOption) error`, `Delete(id K) bool`, `DeleteBatch(ids []K) int`, `Compact() error`, `Clear()`, `SetEfSearch(ef int) error`
+- **Query / Inspect**: `Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error)`, `Get(id K) ([]float32, bool)`, `Contains(id K) bool`, `Keys() []K`, `All() iter.Seq2[K, []float32]`, `Len() int`, `Dim() int`, `Stats() IndexStats`
 - **Persist**: `WriteTo(w io.Writer) (int64, error)`, `SaveFile(path string) error`
 
 ### `IndexStats` Fields

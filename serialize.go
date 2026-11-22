@@ -188,7 +188,7 @@ func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 	binary.LittleEndian.PutUint32(hdr[16:20], uint32(idx.m))
 	binary.LittleEndian.PutUint32(hdr[20:24], uint32(idx.mmax))
 	binary.LittleEndian.PutUint32(hdr[24:28], uint32(idx.efConstruction))
-	binary.LittleEndian.PutUint32(hdr[28:32], uint32(idx.efSearch))
+	binary.LittleEndian.PutUint32(hdr[28:32], uint32(idx.efSearch.Load()))
 	binary.LittleEndian.PutUint64(hdr[32:40], uint64(idx.seed))
 	binary.LittleEndian.PutUint32(hdr[40:44], uint32(len(liveIDs)))
 	binary.LittleEndian.PutUint32(hdr[44:48], maxLvl)
@@ -329,72 +329,99 @@ func (idx *Index[K]) writeKeys(w io.Writer, liveIDs []uint32, keyKind uint8) err
 		return err
 	}
 
-	var buf [8]byte
-	for _, oldID := range liveIDs {
-		k := idx.extKeyAt(oldID)
-		switch v := any(k).(type) {
-		case int:
-			binary.LittleEndian.PutUint64(buf[:], uint64(int64(v)))
-			if _, err := w.Write(buf[:8]); err != nil {
-				return err
+	var zero K
+	switch any(zero).(type) {
+	case int:
+		return writeFixedKeys(idx, w, liveIDs, 8, func(dst []byte, slice []int, slot int) {
+			binary.LittleEndian.PutUint64(dst, uint64(int64(slice[slot])))
+		})
+	case int64:
+		return writeFixedKeys(idx, w, liveIDs, 8, func(dst []byte, slice []int64, slot int) {
+			binary.LittleEndian.PutUint64(dst, uint64(slice[slot]))
+		})
+	case int32:
+		return writeFixedKeys(idx, w, liveIDs, 4, func(dst []byte, slice []int32, slot int) {
+			binary.LittleEndian.PutUint32(dst, uint32(slice[slot]))
+		})
+	case uint64:
+		return writeFixedKeys(idx, w, liveIDs, 8, func(dst []byte, slice []uint64, slot int) {
+			binary.LittleEndian.PutUint64(dst, slice[slot])
+		})
+	case uint32:
+		return writeFixedKeys(idx, w, liveIDs, 4, func(dst []byte, slice []uint32, slot int) {
+			binary.LittleEndian.PutUint32(dst, slice[slot])
+		})
+	case string:
+		var lenBuf [4]byte
+		var lastChunk *arenaChunk[K]
+		var lastSlice []string
+		for _, oldID := range liveIDs {
+			chunk, slot := idx.getChunk(oldID)
+			if chunk != lastChunk {
+				lastChunk = chunk
+				lastSlice = any(chunk.intToExt).([]string)
 			}
-		case int64:
-			binary.LittleEndian.PutUint64(buf[:], uint64(v))
-			if _, err := w.Write(buf[:8]); err != nil {
-				return err
-			}
-		case int32:
-			binary.LittleEndian.PutUint32(buf[:4], uint32(v))
-			if _, err := w.Write(buf[:4]); err != nil {
-				return err
-			}
-		case uint64:
-			binary.LittleEndian.PutUint64(buf[:], v)
-			if _, err := w.Write(buf[:8]); err != nil {
-				return err
-			}
-		case uint32:
-			binary.LittleEndian.PutUint32(buf[:4], v)
-			if _, err := w.Write(buf[:4]); err != nil {
-				return err
-			}
-		case string:
-			binary.LittleEndian.PutUint32(buf[:4], uint32(len(v)))
-			if _, err := w.Write(buf[:4]); err != nil {
+			v := lastSlice[slot]
+			binary.LittleEndian.PutUint32(lenBuf[:], uint32(len(v)))
+			if _, err := w.Write(lenBuf[:]); err != nil {
 				return err
 			}
 			if _, err := io.WriteString(w, v); err != nil {
 				return err
 			}
-		case uint:
-			binary.LittleEndian.PutUint64(buf[:], uint64(v))
-			if _, err := w.Write(buf[:8]); err != nil {
+		}
+	case uint:
+		return writeFixedKeys(idx, w, liveIDs, 8, func(dst []byte, slice []uint, slot int) {
+			binary.LittleEndian.PutUint64(dst, uint64(slice[slot]))
+		})
+	case int16:
+		return writeFixedKeys(idx, w, liveIDs, 2, func(dst []byte, slice []int16, slot int) {
+			binary.LittleEndian.PutUint16(dst, uint16(slice[slot]))
+		})
+	case uint16:
+		return writeFixedKeys(idx, w, liveIDs, 2, func(dst []byte, slice []uint16, slot int) {
+			binary.LittleEndian.PutUint16(dst, slice[slot])
+		})
+	case int8:
+		return writeFixedKeys(idx, w, liveIDs, 1, func(dst []byte, slice []int8, slot int) {
+			dst[0] = byte(slice[slot])
+		})
+	case uint8:
+		return writeFixedKeys(idx, w, liveIDs, 1, func(dst []byte, slice []uint8, slot int) {
+			dst[0] = slice[slot]
+		})
+	case [16]byte:
+		return writeFixedKeys(idx, w, liveIDs, 16, func(dst []byte, slice [][16]byte, slot int) {
+			copy(dst, slice[slot][:])
+		})
+	}
+	return nil
+}
+
+func writeFixedKeys[K comparable, T any](idx *Index[K], w io.Writer, liveIDs []uint32, elemSize int, put func(dst []byte, slice []T, slot int)) error {
+	var buf [4096]byte
+	limit := len(buf) - elemSize
+	pos := 0
+	var lastChunk *arenaChunk[K]
+	var lastSlice []T
+	for _, oldID := range liveIDs {
+		chunk, slot := idx.getChunk(oldID)
+		if chunk != lastChunk {
+			lastChunk = chunk
+			lastSlice = any(chunk.intToExt).([]T)
+		}
+		put(buf[pos:pos+elemSize], lastSlice, slot)
+		pos += elemSize
+		if pos > limit {
+			if _, err := w.Write(buf[:pos]); err != nil {
 				return err
 			}
-		case int16:
-			binary.LittleEndian.PutUint16(buf[:2], uint16(v))
-			if _, err := w.Write(buf[:2]); err != nil {
-				return err
-			}
-		case uint16:
-			binary.LittleEndian.PutUint16(buf[:2], v)
-			if _, err := w.Write(buf[:2]); err != nil {
-				return err
-			}
-		case int8:
-			buf[0] = byte(v)
-			if _, err := w.Write(buf[:1]); err != nil {
-				return err
-			}
-		case uint8:
-			buf[0] = v
-			if _, err := w.Write(buf[:1]); err != nil {
-				return err
-			}
-		case [16]byte:
-			if _, err := w.Write(v[:]); err != nil {
-				return err
-			}
+			pos = 0
+		}
+	}
+	if pos > 0 {
+		if _, err := w.Write(buf[:pos]); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -559,7 +586,6 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		m:              int(m),
 		mmax:           int(mmax),
 		efConstruction: int(efConst),
-		efSearch:       effEfSearch,
 		mL:             1.0 / math.Log(float64(m)),
 		metric:         metric,
 		customDist:     customDist,
@@ -568,6 +594,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		extToInt:       make(map[K]uint32),
 		rng:            rand.New(rand.NewSource(effSeed)),
 	}
+	idx.efSearch.Store(int64(effEfSearch))
 	idx.initScratchPool()
 
 	// Read keys incrementally (OOM-safe for corrupt LiveCount).
@@ -771,46 +798,44 @@ func readKeys[K comparable](r io.Reader, count int, keyKind uint8) ([]K, error) 
 		capHint = 4096
 	}
 	keys := make([]K, 0, capHint)
-	var buf [16]byte
-	var zero K
-	for i := 0; i < count; i++ {
-		var k K
-		switch any(zero).(type) {
-		case int:
-			if _, err := io.ReadFull(r, buf[:8]); err != nil {
+	switch dst := any(&keys).(type) {
+	case *[]int:
+		if err := readFixedKeys(r, count, 8, dst, func(b []byte) int {
+			return int(int64(binary.LittleEndian.Uint64(b)))
+		}); err != nil {
+			return nil, err
+		}
+	case *[]int64:
+		if err := readFixedKeys(r, count, 8, dst, func(b []byte) int64 {
+			return int64(binary.LittleEndian.Uint64(b))
+		}); err != nil {
+			return nil, err
+		}
+	case *[]int32:
+		if err := readFixedKeys(r, count, 4, dst, func(b []byte) int32 {
+			return int32(binary.LittleEndian.Uint32(b))
+		}); err != nil {
+			return nil, err
+		}
+	case *[]uint64:
+		if err := readFixedKeys(r, count, 8, dst, func(b []byte) uint64 {
+			return binary.LittleEndian.Uint64(b)
+		}); err != nil {
+			return nil, err
+		}
+	case *[]uint32:
+		if err := readFixedKeys(r, count, 4, dst, func(b []byte) uint32 {
+			return binary.LittleEndian.Uint32(b)
+		}); err != nil {
+			return nil, err
+		}
+	case *[]string:
+		var lenBuf [4]byte
+		for i := 0; i < count; i++ {
+			if _, err := io.ReadFull(r, lenBuf[:]); err != nil {
 				return nil, wrapCorrupt(err)
 			}
-			v := int(int64(binary.LittleEndian.Uint64(buf[:8])))
-			k = any(v).(K)
-		case int64:
-			if _, err := io.ReadFull(r, buf[:8]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := int64(binary.LittleEndian.Uint64(buf[:8]))
-			k = any(v).(K)
-		case int32:
-			if _, err := io.ReadFull(r, buf[:4]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := int32(binary.LittleEndian.Uint32(buf[:4]))
-			k = any(v).(K)
-		case uint64:
-			if _, err := io.ReadFull(r, buf[:8]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := binary.LittleEndian.Uint64(buf[:8])
-			k = any(v).(K)
-		case uint32:
-			if _, err := io.ReadFull(r, buf[:4]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := binary.LittleEndian.Uint32(buf[:4])
-			k = any(v).(K)
-		case string:
-			if _, err := io.ReadFull(r, buf[:4]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			slen := binary.LittleEndian.Uint32(buf[:4])
+			slen := binary.LittleEndian.Uint32(lenBuf[:])
 			if slen > maxSerStringKeyLen {
 				return nil, fmt.Errorf("%w: string key length %d exceeds limit", ErrCorruptedIndex, slen)
 			}
@@ -818,47 +843,68 @@ func readKeys[K comparable](r io.Reader, count int, keyKind uint8) ([]K, error) 
 			if err != nil {
 				return nil, err
 			}
-			k = any(string(sb)).(K)
-		case uint:
-			if _, err := io.ReadFull(r, buf[:8]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := uint(binary.LittleEndian.Uint64(buf[:8]))
-			k = any(v).(K)
-		case int16:
-			if _, err := io.ReadFull(r, buf[:2]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := int16(binary.LittleEndian.Uint16(buf[:2]))
-			k = any(v).(K)
-		case uint16:
-			if _, err := io.ReadFull(r, buf[:2]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := binary.LittleEndian.Uint16(buf[:2])
-			k = any(v).(K)
-		case int8:
-			if _, err := io.ReadFull(r, buf[:1]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			v := int8(buf[0])
-			k = any(v).(K)
-		case uint8:
-			if _, err := io.ReadFull(r, buf[:1]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			k = any(buf[0]).(K)
-		case [16]byte:
-			if _, err := io.ReadFull(r, buf[:16]); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			var arr [16]byte
-			copy(arr[:], buf[:16])
-			k = any(arr).(K)
+			*dst = append(*dst, string(sb))
 		}
-		keys = append(keys, k)
+	case *[]uint:
+		if err := readFixedKeys(r, count, 8, dst, func(b []byte) uint {
+			return uint(binary.LittleEndian.Uint64(b))
+		}); err != nil {
+			return nil, err
+		}
+	case *[]int16:
+		if err := readFixedKeys(r, count, 2, dst, func(b []byte) int16 {
+			return int16(binary.LittleEndian.Uint16(b))
+		}); err != nil {
+			return nil, err
+		}
+	case *[]uint16:
+		if err := readFixedKeys(r, count, 2, dst, func(b []byte) uint16 {
+			return binary.LittleEndian.Uint16(b)
+		}); err != nil {
+			return nil, err
+		}
+	case *[]int8:
+		if err := readFixedKeys(r, count, 1, dst, func(b []byte) int8 {
+			return int8(b[0])
+		}); err != nil {
+			return nil, err
+		}
+	case *[]uint8:
+		if err := readFixedKeys(r, count, 1, dst, func(b []byte) uint8 {
+			return b[0]
+		}); err != nil {
+			return nil, err
+		}
+	case *[][16]byte:
+		if err := readFixedKeys(r, count, 16, dst, func(b []byte) [16]byte {
+			var arr [16]byte
+			copy(arr[:], b)
+			return arr
+		}); err != nil {
+			return nil, err
+		}
 	}
 	return keys, nil
+}
+
+func readFixedKeys[T any](r io.Reader, count int, elemSize int, dst *[]T, get func([]byte) T) error {
+	var buf [4096]byte
+	perChunk := len(buf) / elemSize
+	for rem := count; rem > 0; {
+		n := rem
+		if n > perChunk {
+			n = perChunk
+		}
+		chunk := buf[:n*elemSize]
+		if _, err := io.ReadFull(r, chunk); err != nil {
+			return wrapCorrupt(err)
+		}
+		for j := 0; j < n; j++ {
+			*dst = append(*dst, get(chunk[j*elemSize:(j+1)*elemSize]))
+		}
+		rem -= n
+	}
+	return nil
 }
 
 // LoadFile opens path and deserializes an [Index] using [ReadFrom].

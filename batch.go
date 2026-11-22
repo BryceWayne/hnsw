@@ -134,7 +134,7 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 		return [][]SearchResult[K]{}, nil
 	}
 
-	ef := idx.efSearch
+	ef := int(idx.efSearch.Load())
 	if sc.efSet {
 		ef = sc.ef
 	}
@@ -291,8 +291,8 @@ func (idx *Index[K]) DeleteBatch(ids []K) int {
 		}
 	}
 
-	// 2-hop repair among live neighbors of deleted nodes.
-	nbrBuf := make([]uint32, 0, idx.mmax)
+	// Batched 2-hop repair among live neighbors of deleted nodes.
+	nbrBuf := scratch.neighbors[:0]
 	for _, oldID := range deadIDs {
 		chunk, slot := idx.getChunk(oldID)
 		maxLvl := int(chunk.maxLevels[slot])
@@ -306,15 +306,14 @@ func (idx *Index[K]) DeleteBatch(ids []K) int {
 				}
 			}
 			liveNbrs := nbrBuf[:w]
-			for i, u := range liveNbrs {
-				for j, v := range liveNbrs {
-					if i != j {
-						idx.addConnection(u, v, lvl, scratch, false)
-					}
+			if len(liveNbrs) > 1 {
+				for _, u := range liveNbrs {
+					idx.addConnectionsBatch(u, liveNbrs, lvl, scratch)
 				}
 			}
 		}
 	}
+	scratch.neighbors = nbrBuf[:0]
 
 	ep := uint32(idx.entryState.Load())
 	if idx.isDeleted(ep) {

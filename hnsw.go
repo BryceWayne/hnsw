@@ -1,6 +1,8 @@
 package hnsw
 
 import (
+	"fmt"
+	"iter"
 	"math"
 	"math/rand"
 	"slices"
@@ -99,7 +101,7 @@ type Index[K comparable] struct {
 	m              int
 	mmax           int
 	efConstruction int
-	efSearch       int
+	efSearch       atomic.Int64
 	mL             float64
 	metric         Metric
 	customDist     DistanceFunc
@@ -154,7 +156,6 @@ func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 		m:              cfg.m,
 		mmax:           cfg.mmax,
 		efConstruction: cfg.efConstruction,
-		efSearch:       cfg.efSearch,
 		mL:             1.0 / math.Log(float64(cfg.m)),
 		metric:         cfg.metric,
 		customDist:     cfg.customDist,
@@ -163,6 +164,7 @@ func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 		extToInt:       make(map[K]uint32),
 		rng:            rand.New(rand.NewSource(seed)),
 	}
+	idx.efSearch.Store(int64(cfg.efSearch))
 	idx.entryState.Store(emptyEntry)
 	idx.initScratchPool()
 	return idx, nil
@@ -812,12 +814,8 @@ func (idx *Index[K]) addConnection(targetID, newNbr uint32, lvl int, scratch *se
 		defer idx.nodeLocks[targetID&nodeLockMask].Unlock()
 	}
 
-	if idx.isDeleted(targetID) {
-		return
-	}
-
 	chunk, slot := idx.getChunk(targetID)
-	if lvl > int(chunk.maxLevels[slot]) {
+	if isDeletedAt(chunk, slot) || lvl > int(chunk.maxLevels[slot]) {
 		return
 	}
 
@@ -854,9 +852,66 @@ func (idx *Index[K]) addConnection(targetID, newNbr uint32, lvl int, scratch *se
 		return
 	}
 
-	var chosenBuf [64]uint32
-	chosen := chosenBuf[:0]
-	chosen = idx.selectNeighborsFromIDs(targetID, cand, maxConn, scratch, chosen)
+	chosen := idx.selectNeighborsFromIDs(targetID, cand, maxConn, scratch, scratch.chosenBuf[:0])
+	scratch.chosenBuf = chosen
+	idx.setNeighbors(targetID, lvl, chosen, false)
+}
+
+// addConnectionsBatch merges all candidate neighbors in newNbrs into targetID at lvl
+// in a single pass, executing Algorithm 4 neighbor pruning at most once per target node.
+// Caller must hold exclusive index access.
+func (idx *Index[K]) addConnectionsBatch(targetID uint32, newNbrs []uint32, lvl int, scratch *searchScratch) {
+	chunk, slot := idx.getChunk(targetID)
+	if isDeletedAt(chunk, slot) || lvl > int(chunk.maxLevels[slot]) {
+		return
+	}
+
+	maxConn := idx.maxConnForLevel(lvl)
+	cand := scratch.candIDs[:0]
+	if lvl == 0 {
+		cnt := int(chunk.l0Count[slot])
+		base := slot * idx.mmax
+		for _, nb := range chunk.l0Edges[base : base+cnt] {
+			if nb != targetID && !idx.isDeleted(nb) {
+				cand = append(cand, nb)
+			}
+		}
+	} else {
+		for _, nb := range chunk.upperLevels[slot][lvl-1] {
+			if nb != targetID && !idx.isDeleted(nb) {
+				cand = append(cand, nb)
+			}
+		}
+	}
+
+	existingLen := len(cand)
+	for _, v := range newNbrs {
+		if v == targetID {
+			continue
+		}
+		dup := false
+		for _, prev := range cand {
+			if prev == v {
+				dup = true
+				break
+			}
+		}
+		if !dup {
+			cand = append(cand, v)
+		}
+	}
+	scratch.candIDs = cand
+	if len(cand) == existingLen {
+		return
+	}
+
+	if len(cand) <= maxConn {
+		idx.setNeighbors(targetID, lvl, cand, false)
+		return
+	}
+
+	chosen := idx.selectNeighborsFromIDs(targetID, cand, maxConn, scratch, scratch.chosenBuf[:0])
+	scratch.chosenBuf = chosen
 	idx.setNeighbors(targetID, lvl, chosen, false)
 }
 
@@ -918,8 +973,8 @@ func (idx *Index[K]) deleteInternal(extID K, oldID uint32, scratch *searchScratc
 	chunk, slot := idx.getChunk(oldID)
 	oldMaxLvl := int(chunk.maxLevels[slot])
 
-	// Snapshot neighbors per level, remove oldID, and run 2-hop repair among live neighbors.
-	nbrBuf := make([]uint32, 0, idx.mmax)
+	// Snapshot neighbors per level, remove oldID, and run batched 2-hop repair among live neighbors.
+	nbrBuf := scratch.neighbors[:0]
 	for lvl := 0; lvl <= oldMaxLvl; lvl++ {
 		nbrBuf = idx.copyNeighbors(oldID, lvl, nbrBuf, false)
 		w := 0
@@ -933,14 +988,13 @@ func (idx *Index[K]) deleteInternal(extID K, oldID uint32, scratch *searchScratc
 		for _, u := range liveNbrs {
 			idx.removeEdge(u, oldID, lvl)
 		}
-		for i, u := range liveNbrs {
-			for j, v := range liveNbrs {
-				if i != j {
-					idx.addConnection(u, v, lvl, scratch, false)
-				}
+		if len(liveNbrs) > 1 {
+			for _, u := range liveNbrs {
+				idx.addConnectionsBatch(u, liveNbrs, lvl, scratch)
 			}
 		}
 	}
+	scratch.neighbors = nbrBuf[:0]
 
 	if idx.liveCount.Load() == 0 {
 		idx.entryState.Store(emptyEntry)
@@ -973,24 +1027,31 @@ func (idx *Index[K]) electEntryPoint() {
 	idx.entryState.Store((uint64(bestLvl) << 32) | uint64(bestID))
 }
 
+// readStripeForCall derives a cache-line-padded read stripe from the caller's
+// stack address, avoiding sync.Pool traffic and shared atomic counters on fast reads.
+func readStripeForCall() uint32 {
+	var anchor byte
+	return uint32((uintptr(unsafe.Pointer(&anchor)) >> 12) & readMask)
+}
+
 // Get returns an independent copy of the stored vector for id and true if present,
 // or nil and false otherwise. For [MetricCosine], Get returns the exact unnormalized
 // vector originally inserted.
 func (idx *Index[K]) Get(id K) ([]float32, bool) {
-	scratch := idx.scratchPool.Get().(*searchScratch)
-	stripe := scratch.stripe
-	idx.scratchPool.Put(scratch)
-
+	stripe := readStripeForCall()
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
 
 	idx.extMu.RLock()
 	intID, ok := idx.extToInt[id]
 	idx.extMu.RUnlock()
-	if !ok || idx.isDeleted(intID) {
+	if !ok {
 		return nil, false
 	}
 	chunk, slot := idx.getChunk(intID)
+	if isDeletedAt(chunk, slot) {
+		return nil, false
+	}
 	out := make([]float32, idx.dim)
 	copy(out, idx.vectorAt(chunk, slot))
 	return out, true
@@ -998,10 +1059,7 @@ func (idx *Index[K]) Get(id K) ([]float32, bool) {
 
 // Contains reports whether id is currently present in the index.
 func (idx *Index[K]) Contains(id K) bool {
-	scratch := idx.scratchPool.Get().(*searchScratch)
-	stripe := scratch.stripe
-	idx.scratchPool.Put(scratch)
-
+	stripe := readStripeForCall()
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
 
@@ -1009,6 +1067,54 @@ func (idx *Index[K]) Contains(id K) bool {
 	intID, ok := idx.extToInt[id]
 	idx.extMu.RUnlock()
 	return ok && !idx.isDeleted(intID)
+}
+
+// Keys returns a snapshot slice of all live external keys currently stored in the index.
+// Key iteration order is unspecified. Safe for concurrent use.
+func (idx *Index[K]) Keys() []K {
+	stripe := readStripeForCall()
+	idx.readStripes[stripe].mu.RLock()
+	defer idx.readStripes[stripe].mu.RUnlock()
+
+	idx.extMu.RLock()
+	keys := make([]K, 0, len(idx.extToInt))
+	for k := range idx.extToInt {
+		keys = append(keys, k)
+	}
+	idx.extMu.RUnlock()
+	return keys
+}
+
+// All returns a Go 1.23 [iter.Seq2] iterator over all live (key, vector) pairs in the index.
+// Each yielded vector is an independent copy (exact unnormalized values for [MetricCosine]).
+//
+// All snapshots the live keys up front and does not hold index locks across yield calls,
+// so callers may safely invoke [Index.Search], [Index.Insert], or [Index.Delete] inside
+// the range loop without deadlocking. Keys concurrently deleted before being visited are skipped.
+func (idx *Index[K]) All() iter.Seq2[K, []float32] {
+	return func(yield func(K, []float32) bool) {
+		keys := idx.Keys()
+		for _, k := range keys {
+			vec, ok := idx.Get(k)
+			if !ok {
+				continue
+			}
+			if !yield(k, vec) {
+				return
+			}
+		}
+	}
+}
+
+// SetEfSearch atomically updates the default efSearch beam width used by subsequent
+// [Index.Search], [Index.SearchFilter], and [Index.SearchBatch] calls.
+// Returns an error wrapping [ErrInvalidConfig] if ef <= 0.
+func (idx *Index[K]) SetEfSearch(ef int) error {
+	if ef <= 0 {
+		return fmt.Errorf("%w: EfSearch must be positive", ErrInvalidConfig)
+	}
+	idx.efSearch.Store(int64(ef))
+	return nil
 }
 
 // Len returns the number of live vectors currently stored in the index.
@@ -1234,7 +1340,7 @@ func (idx *Index[K]) Stats() IndexStats {
 		M:              idx.m,
 		Mmax:           idx.mmax,
 		EfConstruction: idx.efConstruction,
-		EfSearch:       idx.efSearch,
+		EfSearch:       int(idx.efSearch.Load()),
 		Metric:         idx.metric,
 		Heuristic:      idx.heuristic,
 		MemoryBytes:    memBytes,

@@ -8,6 +8,7 @@ type searchScratch struct {
 	stripe           uint32
 	neighbors        []uint32
 	candIDs          []uint32
+	chosenBuf        []uint32
 	heuristicWork    []distNode
 	selected         []distNode
 	selectedVecs     [][]float32
@@ -24,6 +25,7 @@ func newSearchScratch(stripe uint32, mmax int) *searchScratch {
 		stripe:           stripe,
 		neighbors:        make([]uint32, 0, mmax),
 		candIDs:          make([]uint32, 0, mmax+1),
+		chosenBuf:        make([]uint32, 0, mmax),
 		heuristicWork:    make([]distNode, 0, mmax+1),
 		selected:         make([]distNode, 0, mmax),
 		selectedVecs:     make([][]float32, 0, mmax),

@@ -26,12 +26,13 @@
 //
 // All [Index] operations are safe for concurrent use. Concurrent reads
 // ([Index.Search], [Index.SearchFilter], [Index.SearchBatch], [Index.Get],
-// [Index.Contains], [Index.Len], [Index.Stats]) and new-key [Index.Insert] calls
-// coordinate through striped read/write locks, per-node locks, and atomic
-// entry-point state. Pooled search scratch buffers (epoch-stamped visited
-// slices, hole-sifting value-typed heaps, and reusable Algorithm 4 pruning
-// buffers) eliminate per-query heap allocations in steady state, and batch
-// workers reuse one scratch buffer per worker across the entire batch.
+// [Index.Contains], [Index.Keys], [Index.All], [Index.Len], [Index.Stats]) and
+// new-key [Index.Insert] calls coordinate through striped read/write locks,
+// per-node locks, and atomic entry-point and efSearch state. Pooled search
+// scratch buffers (epoch-stamped visited slices, hole-sifting value-typed heaps,
+// and reusable Algorithm 4 pruning buffers) eliminate per-query heap allocations
+// in steady state, and batch workers reuse one scratch buffer per worker across
+// the entire batch.
 //
 // # Updates, Deletion, and Compaction
 //
