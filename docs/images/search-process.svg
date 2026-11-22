@@ -1,231 +1,222 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 800 500">
-  <!-- Generator: Adobe Illustrator 29.1.0, SVG Export Plug-In . SVG Version: 2.1.0 Build 142)  -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540" role="img" aria-labelledby="title desc">
+  <title id="title">HNSW Two-Phase Search and Zero-Alloc Scratch</title>
+  <desc id="desc">Search(query, k) and SearchInto in Go: Phase 1 greedyStep from entryState down MaxLevel..1 (ef=1), Phase 2 Layer-0 beam search with ef=max(EfSearch, k) using pooled searchScratch, traversing tombstoned or filtered nodes without returning them in results.</desc>
   <defs>
     <style>
-      .st0 {
-        fill: #dc2626;
-      }
-
-      .st0, .st1, .st2, .st3 {
-        font-family: ArialMT, Arial;
-      }
-
-      .st0, .st1, .st2, .st3, .st4 {
-        isolation: isolate;
-      }
-
-      .st0, .st1, .st3 {
-        font-size: 12px;
-      }
-
-      .st5 {
-        fill: url(#linear-gradient2);
-      }
-
-      .st6 {
-        fill: url(#linear-gradient1);
-      }
-
-      .st7 {
-        fill: url(#linear-gradient9);
-      }
-
-      .st8 {
-        fill: url(#linear-gradient3);
-      }
-
-      .st9 {
-        fill: url(#linear-gradient6);
-      }
-
-      .st10 {
-        fill: url(#linear-gradient8);
-      }
-
-      .st11 {
-        fill: url(#linear-gradient5);
-      }
-
-      .st12 {
-        fill: url(#linear-gradient4);
-      }
-
-      .st13, .st1, .st2 {
-        fill: #94a3b8;
-      }
-
-      .st13, .st14, .st15 {
-        stroke-width: 2px;
-      }
-
-      .st13, .st15 {
-        stroke: #60a5fa;
-        stroke-dasharray: 5 5;
-      }
-
-      .st16 {
-        fill: url(#linear-gradient13);
-      }
-
-      .st17 {
-        fill: url(#linear-gradient12);
-      }
-
-      .st18 {
-        fill: url(#linear-gradient11);
-      }
-
-      .st19 {
-        fill: url(#linear-gradient10);
-      }
-
-      .st20 {
-        fill: url(#linear-gradient);
-      }
-
-      .st21 {
-        fill: #0f172a;
-      }
-
-      .st2 {
-        font-size: 14px;
-      }
-
-      .st14 {
-        stroke: #dc2626;
-      }
-
-      .st3 {
-        fill: #64748b;
-      }
-
-      .st4 {
-        fill: url(#linear-gradient7);
-        opacity: .3;
-      }
+      .sans { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+      .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .title { font-size: 20px; font-weight: 700; fill: #F8FAFC; }
+      .subtitle { font-size: 12px; font-weight: 400; fill: #94A3B8; }
+      .panel { fill: #152033; stroke: #293548; stroke-width: 1.25; }
+      .panel-title { font-size: 12.5px; font-weight: 700; fill: #F8FAFC; }
+      .label { font-size: 11.5px; font-weight: 500; fill: #E2E8F0; }
+      .muted { font-size: 11px; font-weight: 400; fill: #94A3B8; }
+      .node-id { font-size: 10.5px; font-weight: 700; fill: #F8FAFC; text-anchor: middle; dominant-baseline: central; }
+      .edge-base { stroke: #475569; stroke-width: 1.3; fill: none; }
+      .proj-line { stroke: #475569; stroke-width: 1.3; stroke-dasharray: 4 3; fill: none; }
+      .greedy-path { stroke: #00ADD8; stroke-width: 2.4; fill: none; }
+      .beam-path { stroke: #60A5FA; stroke-width: 2.1; fill: none; }
     </style>
-    <linearGradient id="linear-gradient" x1="89.9" y1="641" x2="90.9" y2="640" gradientTransform="translate(-1724 15461) scale(24 -24)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient1" x1="93.5" y1="632.5" x2="93.5" y2="631.5" gradientTransform="translate(-8856 6415) scale(100 -10)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa" stop-opacity=".2"/>
-      <stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient2" x1="89" y1="639.8" x2="90" y2="638.8" gradientTransform="translate(-1346 12975) scale(20 -20)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#059669"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient3" x1="89" y1="639.8" x2="90" y2="638.8" gradientTransform="translate(-1246 12975) scale(20 -20)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient4" x1="87.8" y1="637.9" x2="88.8" y2="636.9" gradientTransform="translate(-1018 10489) scale(16 -16)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#059669"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient5" x1="87.8" y1="637.9" x2="88.8" y2="636.9" gradientTransform="translate(-918 10489) scale(16 -16)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient6" x1="87.8" y1="637.9" x2="88.8" y2="636.9" gradientTransform="translate(-818 10489) scale(16 -16)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient7" x1="93.5" y1="632.5" x2="93.5" y2="631.5" gradientTransform="translate(-8806 6615) scale(100 -10)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa" stop-opacity=".2"/>
-      <stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient8" x1="85.7" y1="634.9" x2="86.7" y2="633.9" gradientTransform="translate(-590 8003) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#059669"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient9" x1="85.7" y1="634.9" x2="86.7" y2="633.9" gradientTransform="translate(-540 8003) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#059669"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient10" x1="85.7" y1="634.9" x2="86.7" y2="633.9" gradientTransform="translate(-490 8003) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f87171"/>
-      <stop offset="1" stop-color="#dc2626"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient11" x1="91.1" y1="636.2" x2="92.1" y2="635.2" gradientTransform="translate(-430 8033) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient12" x1="91.1" y1="636.2" x2="92.1" y2="635.2" gradientTransform="translate(-430 8053) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#34d399"/>
-      <stop offset="1" stop-color="#059669"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient13" x1="91.1" y1="636.2" x2="92.1" y2="635.2" gradientTransform="translate(-430 8073) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#f87171"/>
-      <stop offset="1" stop-color="#dc2626"/>
-    </linearGradient>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5" markerHeight="7.5" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="#00ADD8"/>
+    </marker>
+    <marker id="arrow-blue" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="#60A5FA"/>
+    </marker>
   </defs>
-  <rect class="st21" width="800" height="500"/>
-  <g>
-    <text class="st2" transform="translate(45.6 120)"><tspan x="0" y="0">Step 1:</tspan></text>
-    <text class="st2" transform="translate(45.6 220)"><tspan x="0" y="0">Step 2:</tspan></text>
-    <text class="st2" transform="translate(45.6 320)"><tspan x="0" y="0">Step 3:</tspan></text>
-    <text class="st2" transform="translate(45.6 420)"><tspan x="0" y="0">Step 4:</tspan></text>
-  </g>
-  <g>
-    <text class="st3" transform="translate(280.9 90)"><tspan x="0" y="0">Layer 3</tspan></text>
-    <text class="st3" transform="translate(280.9 190)"><tspan x="0" y="0">Layer 2</tspan></text>
-    <text class="st3" transform="translate(280.9 290)"><tspan x="0" y="0">Layer 1</tspan></text>
-    <text class="st3" transform="translate(280.9 390)"><tspan x="0" y="0">Layer 0</tspan></text>
-  </g>
-  <g>
-    <g>
-      <circle class="st20" cx="444.7" cy="90" r="12">
-        <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="12;14;12"/>
-      </circle>
-      <text class="st1" transform="translate(464.7 80)"><tspan x="0" y="0">Entry Point</tspan></text>
-      <path class="st6" d="M444.7,90c33.3,13.3,66.7,13.3,100,0">
-        <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="0;0.3;0"/>
-      </path>
-    </g>
-    <g>
-      <circle class="st5" cx="444.7" cy="190" r="10"/>
-      <circle class="st8" cx="544.7" cy="190" r="10">
-        <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="10;12;10"/>
-      </circle>
-      <path class="st15" d="M444.7,190h100">
-        <animate accumulate="none" additive="replace" attributeName="stroke-dashoffset" calcMode="linear" dur="1s" fill="remove" repeatCount="indefinite" restart="always" values="10;0"/>
-      </path>
-    </g>
-    <g>
-      <circle class="st12" cx="394.7" cy="290" r="8"/>
-      <circle class="st11" cx="494.7" cy="290" r="8"/>
-      <circle class="st9" cx="594.7" cy="290" r="8"/>
-      <path class="st4" d="M494.7,290c33.3,13.3,66.7,13.3,100,0"/>
-    </g>
-    <g>
-      <circle class="st10" cx="444.7" cy="390" r="6"/>
-      <circle class="st7" cx="494.7" cy="390" r="6"/>
-      <circle class="st19" cx="544.7" cy="390" r="6">
-        <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="1s" fill="remove" repeatCount="indefinite" restart="always" values="6;8;6"/>
-      </circle>
-      <path class="st14" d="M544.7,375v-10">
-        <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="2s" fill="remove" repeatCount="indefinite" restart="always" values="0;1;0"/>
-      </path>
-      <text class="st0" transform="translate(526 360)"><tspan x="0" y="0">Found!</tspan></text>
-    </g>
-  </g>
-  <g>
-    <text class="st1" transform="translate(105 120)"><tspan x="0" y="0">Enter at top layer</tspan></text>
-    <text class="st1" transform="translate(105 220)"><tspan x="0" y="0">Navigate through layers</tspan></text>
-    <text class="st1" transform="translate(105 320)"><tspan x="0" y="0">Search ground layer</tspan></text>
-    <text class="st1" transform="translate(105 420)"><tspan x="0" y="0">Return nearest neighbor</tspan></text>
-  </g>
-  <g>
-    <circle class="st18" cx="669.6" cy="405" r="6"/>
-    <text class="st1" transform="translate(684.6 409)"><tspan x="0" y="0">Current Node</tspan></text>
-    <circle class="st17" cx="669.6" cy="425" r="6"/>
-    <text class="st1" transform="translate(684.6 429)"><tspan x="0" y="0">Visited Node</tspan></text>
-    <circle class="st16" cx="669.6" cy="445" r="6"/>
-    <text class="st1" transform="translate(684.6 449)"><tspan x="0" y="0">Target Node</tspan></text>
-    <path class="st13" d="M659.6,465h20"/>
-    <text class="st1" transform="translate(684.6 469)"><tspan x="0" y="0">Search Path</tspan></text>
-  </g>
+
+  <!-- Outer Card -->
+  <rect x="2" y="2" width="956" height="536" rx="14" fill="#0F172A" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="28" y="38" class="sans title">Two-Phase Search &amp; Zero-Alloc Scratch</text>
+  <text x="28" y="57" class="sans subtitle">Search(query, k) / SearchInto: greedyStep upper descent (ef=1) then Layer-0 beam search (ef = max(EfSearch, k))</text>
+
+  <!-- Brand Badge Pill -->
+  <rect x="764" y="21" width="168" height="36" rx="8" fill="#0B172A" stroke="#00ADD8" stroke-opacity="0.75" stroke-width="1.25"/>
+  <line x1="781" y1="34" x2="793" y2="34" stroke="#38BDF8" stroke-width="1.5"/>
+  <line x1="781" y1="34" x2="787" y2="45" stroke="#00ADD8" stroke-width="1.5"/>
+  <line x1="793" y1="34" x2="787" y2="45" stroke="#34D399" stroke-width="1.5"/>
+  <circle cx="781" cy="34" r="2.7" fill="#00ADD8"/>
+  <circle cx="793" cy="34" r="2.7" fill="#38BDF8"/>
+  <circle cx="787" cy="45" r="2.7" fill="#34D399"/>
+  <text x="804" y="39" class="mono" font-size="14" font-weight="700" fill="#38BDF8" dominant-baseline="central">hnsw</text>
+  <line x1="848" y1="29" x2="848" y2="49" stroke="#334155" stroke-width="1.2"/>
+  <text x="858" y="39" class="mono" font-size="11" font-weight="600" fill="#CBD5E1" dominant-baseline="central">Go • ANN</text>
+
+  <!-- Left Graph Area -->
+  <!-- Layer 2 -->
+  <rect x="28" y="78" width="596" height="98" rx="10" class="panel"/>
+  <rect x="40" y="90" width="32" height="20" rx="5" fill="#0C4A6E" stroke="#00ADD8" stroke-width="1.1"/>
+  <text x="56" y="100" class="mono" font-size="11" font-weight="700" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">L2</text>
+  <text x="80" y="100" class="sans label" dominant-baseline="central">Phase 1: greedyStep (ef=1)</text>
+
+  <!-- Layer 1 -->
+  <rect x="28" y="190" width="596" height="104" rx="10" class="panel"/>
+  <rect x="40" y="202" width="32" height="20" rx="5" fill="#0C4A6E" stroke="#00ADD8" stroke-width="1.1"/>
+  <text x="56" y="212" class="mono" font-size="11" font-weight="700" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">L1</text>
+
+  <!-- Layer 0 -->
+  <rect x="28" y="308" width="596" height="164" rx="10" class="panel"/>
+  <rect x="40" y="320" width="32" height="20" rx="5" fill="#1E3A8A" stroke="#60A5FA" stroke-width="1.1"/>
+  <text x="56" y="330" class="mono" font-size="11" font-weight="700" fill="#93C5FD" text-anchor="middle" dominant-baseline="central">L0</text>
+
+  <!-- Vertical Same-Node Identity Projections -->
+  <line x1="142" y1="149" x2="142" y2="236" class="proj-line"/>
+  <line x1="142" y1="264" x2="142" y2="394" class="proj-line"/>
+  <line x1="306" y1="264" x2="306" y2="366" class="proj-line"/>
+  <line x1="434" y1="268" x2="434" y2="372" class="proj-line"/>
+  <line x1="544" y1="264" x2="544" y2="354" class="proj-line"/>
+
+  <!-- Layer 1 & Layer 0 Titles (drawn above projection lines with panel-matched backdrops) -->
+  <rect x="76" y="202" width="168" height="20" fill="#152033"/>
+  <text x="80" y="212" class="sans label" dominant-baseline="central">Phase 1: greedyStep (ef=1)</text>
+  <rect x="76" y="320" width="278" height="20" fill="#152033"/>
+  <text x="80" y="330" class="sans label" dominant-baseline="central">Phase 2: Beam Search (ef = max(EfSearch, k))</text>
+
+  <!-- L0 Beam Frontier Highlight -->
+  <ellipse cx="478" cy="404" rx="122" ry="56" fill="#3B82F6" fill-opacity="0.10" stroke="#60A5FA" stroke-opacity="0.45" stroke-width="1.25" stroke-dasharray="5 4"/>
+
+  <!-- Query target q in L0 -->
+  <circle cx="516" cy="404" r="24" fill="none" stroke="#FBBF24" stroke-opacity="0.35" stroke-width="1.2" stroke-dasharray="3 3"/>
+  <polygon points="516,392 526,404 516,416 506,404" fill="#451A03" stroke="#FBBF24" stroke-width="2"/>
+  <text x="516" y="404" class="mono" font-size="11" font-weight="700" fill="#FBBF24" text-anchor="middle" dominant-baseline="central">q</text>
+
+  <!-- L2 Edges & Nodes -->
+  <line x1="158" y1="134" x2="288" y2="134" class="greedy-path" marker-end="url(#arrow-cyan)"/>
+  <text x="223" y="122" class="mono" font-size="10.5" fill="#38BDF8" text-anchor="middle">d &lt; currDist</text>
+  <!-- Drop L2 -> L1 at v5 (x=306) -->
+  <line x1="306" y1="150" x2="306" y2="234" class="greedy-path" stroke-dasharray="5 3" marker-end="url(#arrow-cyan)"/>
+  <rect x="314" y="169" width="66" height="17" rx="4" fill="#0B172A" stroke="#00ADD8" stroke-opacity="0.6"/>
+  <text x="347" y="178" class="mono" font-size="10" fill="#38BDF8" text-anchor="middle" dominant-baseline="central">drop L2→L1</text>
+
+  <circle cx="142" cy="134" r="18" fill="none" stroke="#00ADD8" stroke-opacity="0.35" stroke-width="1.4"/>
+  <circle cx="142" cy="134" r="14" fill="#0C4A6E" stroke="#00ADD8" stroke-width="2.2"/>
+  <text x="142" y="134" class="mono node-id">v2</text>
+  <rect x="70" y="152" width="68" height="16" rx="4" fill="#0C4A6E"/>
+  <text x="104" y="160" class="mono" font-size="9.5" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">entryState</text>
+
+  <circle cx="306" cy="134" r="14" fill="#0C4A6E" stroke="#38BDF8" stroke-width="2"/>
+  <text x="306" y="134" class="mono node-id">v5</text>
+
+  <!-- L1 Background Edges & Greedy Path -->
+  <line x1="142" y1="250" x2="306" y2="250" class="edge-base"/>
+  <line x1="434" y1="254" x2="544" y2="250" class="edge-base"/>
+  <line x1="321" y1="250" x2="418" y2="254" class="greedy-path" marker-end="url(#arrow-cyan)"/>
+  <text x="370" y="238" class="mono" font-size="10.5" fill="#38BDF8" text-anchor="middle">local min</text>
+  <!-- Drop L1 -> L0 at v7 (x=434) -->
+  <line x1="434" y1="269" x2="434" y2="370" class="greedy-path" stroke-dasharray="5 3" marker-end="url(#arrow-cyan)"/>
+  <rect x="442" y="294" width="66" height="17" rx="4" fill="#0B172A" stroke="#00ADD8" stroke-opacity="0.6"/>
+  <text x="475" y="303" class="mono" font-size="10" fill="#38BDF8" text-anchor="middle" dominant-baseline="central">drop L1→L0</text>
+
+  <circle cx="142" cy="250" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="142" y="250" class="mono node-id">v2</text>
+  <circle cx="306" cy="250" r="13" fill="#0C4A6E" stroke="#38BDF8" stroke-width="2"/>
+  <text x="306" y="250" class="mono node-id">v5</text>
+  <circle cx="434" cy="254" r="13" fill="#0C4A6E" stroke="#38BDF8" stroke-width="2"/>
+  <text x="434" y="254" class="mono node-id">v7</text>
+  <circle cx="544" cy="250" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="544" y="250" class="mono node-id">v9</text>
+
+  <!-- L0 Background Edges -->
+  <line x1="86" y1="418" x2="142" y2="408" class="edge-base"/>
+  <line x1="142" y1="408" x2="226" y2="438" class="edge-base"/>
+  <line x1="142" y1="408" x2="306" y2="380" class="edge-base"/>
+  <line x1="226" y1="438" x2="306" y2="380" class="edge-base"/>
+  <line x1="226" y1="438" x2="352" y2="438" class="edge-base"/>
+  <line x1="306" y1="380" x2="434" y2="386" class="edge-base"/>
+  <line x1="352" y1="438" x2="434" y2="386" class="edge-base"/>
+
+  <!-- L0 Beam Traversal Arrows -->
+  <line x1="448" y1="382" x2="478" y2="364" class="beam-path" marker-end="url(#arrow-blue)"/>
+  <line x1="504" y1="360" x2="529" y2="366" class="beam-path" marker-end="url(#arrow-blue)"/>
+  <line x1="436" y1="400" x2="443" y2="418" class="beam-path" marker-end="url(#arrow-blue)"/>
+  <line x1="462" y1="433" x2="546" y2="436" class="beam-path" marker-end="url(#arrow-blue)"/>
+
+  <!-- L0 Nodes -->
+  <circle cx="86" cy="418" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="86" y="418" class="mono node-id">v0</text>
+  <circle cx="142" cy="408" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="142" y="408" class="mono node-id">v2</text>
+  <circle cx="226" cy="438" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="226" y="438" class="mono node-id">v3</text>
+  <circle cx="306" cy="380" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="306" y="380" class="mono node-id">v5</text>
+  <circle cx="352" cy="438" r="13" fill="#1E293B" stroke="#64748B" stroke-width="1.6"/>
+  <text x="352" y="438" class="mono node-id">v6</text>
+
+  <!-- v7 L0 entry from L1 -->
+  <circle cx="434" cy="386" r="13" fill="#0C4A6E" stroke="#38BDF8" stroke-width="2"/>
+  <text x="434" y="386" class="mono node-id">v7</text>
+
+  <!-- v10 Beam visited -->
+  <circle cx="491" cy="356" r="13" fill="#1E3A8A" stroke="#60A5FA" stroke-width="2"/>
+  <text x="491" y="356" class="mono node-id">v10</text>
+
+  <!-- v8 Tombstoned / Filtered (traversed for connectivity, excluded from results!) -->
+  <circle cx="448" cy="432" r="13" fill="#4C0519" stroke="#FB7185" stroke-width="1.8" stroke-dasharray="3 2"/>
+  <text x="448" y="432" class="mono node-id" fill="#FB7185">v8</text>
+  <text x="352" y="462" class="sans" font-size="10" fill="#FB7185" text-anchor="middle">tombstone: hop only</text>
+
+  <!-- Top-k Results (v9, v11) -->
+  <circle cx="544" cy="368" r="17" fill="none" stroke="#34D399" stroke-opacity="0.4" stroke-width="1.5"/>
+  <circle cx="544" cy="368" r="13" fill="#064E3B" stroke="#34D399" stroke-width="2.2"/>
+  <text x="544" y="368" class="mono node-id">v9</text>
+
+  <circle cx="562" cy="436" r="17" fill="none" stroke="#34D399" stroke-opacity="0.4" stroke-width="1.5"/>
+  <circle cx="562" cy="436" r="13" fill="#064E3B" stroke="#34D399" stroke-width="2.2"/>
+  <text x="562" y="436" class="mono node-id">v11</text>
+  <text x="570" y="404" class="mono" font-size="10.5" font-weight="700" fill="#34D399" text-anchor="middle" dominant-baseline="central">top-k</text>
+
+  <!-- Right 4-Step Walkthrough Panel -->
+  <rect x="640" y="78" width="292" height="82" rx="10" class="panel"/>
+  <circle cx="662" cy="100" r="10" fill="#0C4A6E" stroke="#00ADD8" stroke-width="1.2"/>
+  <text x="662" y="100" class="mono" font-size="11" font-weight="700" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">1</text>
+  <text x="680" y="100" class="sans panel-title" dominant-baseline="central">Atomic Read &amp; entryState</text>
+  <text x="654" y="124" class="sans label">Acquire P-local <tspan class="mono" fill="#38BDF8">readStripes</tspan> RLock.</text>
+  <text x="654" y="143" class="sans muted">Load atomic <tspan class="mono">entryState</tspan> (entryLevel | id).</text>
+
+  <rect x="640" y="170" width="292" height="88" rx="10" class="panel"/>
+  <circle cx="662" cy="192" r="10" fill="#0C4A6E" stroke="#00ADD8" stroke-width="1.2"/>
+  <text x="662" y="192" class="mono" font-size="11" font-weight="700" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">2</text>
+  <text x="680" y="192" class="sans panel-title" dominant-baseline="central">Phase 1: greedyStep (LMax..1)</text>
+  <text x="654" y="216" class="sans label">Greedily step to <tspan class="mono" fill="#38BDF8">d &lt; currDist</tspan> (<tspan class="mono">ef=1</tspan>).</text>
+  <text x="654" y="236" class="sans muted">At local minimum, drop down to <tspan class="mono">lvl - 1</tspan>.</text>
+
+  <rect x="640" y="268" width="292" height="114" rx="10" class="panel"/>
+  <circle cx="662" cy="290" r="10" fill="#1E3A8A" stroke="#60A5FA" stroke-width="1.2"/>
+  <text x="662" y="290" class="mono" font-size="11" font-weight="700" fill="#93C5FD" text-anchor="middle" dominant-baseline="central">3</text>
+  <text x="680" y="290" class="sans panel-title" dominant-baseline="central">Phase 2: L0 Beam &amp; Scratch</text>
+  <text x="654" y="314" class="mono label" fill="#93C5FD">ef = max(EfSearch, k)</text>
+  <text x="654" y="333" class="sans muted">Pooled <tspan class="mono" fill="#CBD5E1">searchScratch</tspan>: <tspan class="mono">candidates</tspan> minHeap,</text>
+  <text x="654" y="350" class="sans muted"><tspan class="mono">results</tspan> maxHeap, O(1) <tspan class="mono">visited</tspan> epoch stamp.</text>
+  <text x="654" y="368" class="sans" font-size="10.5" fill="#FB7185">Tombstoned/filtered: traverse, skip results.</text>
+
+  <rect x="640" y="392" width="292" height="80" rx="10" class="panel"/>
+  <circle cx="662" cy="414" r="10" fill="#064E3B" stroke="#34D399" stroke-width="1.2"/>
+  <text x="662" y="414" class="mono" font-size="11" font-weight="700" fill="#34D399" text-anchor="middle" dominant-baseline="central">4</text>
+  <text x="680" y="414" class="sans panel-title" dominant-baseline="central">Return Top-k Results</text>
+  <text x="654" y="438" class="sans label">Trim to <tspan class="mono" fill="#34D399">k</tspan>, Sqrt (L2), <tspan class="mono">WithMaxDistance</tspan>.</text>
+  <text x="654" y="456" class="mono muted" fill="#34D399">SearchInto: 0 B/op, 0 allocs/op</text>
+
+  <!-- Footer Legend Bar -->
+  <rect x="28" y="484" width="904" height="34" rx="8" class="panel"/>
+  <circle cx="48" cy="501" r="6" fill="#0C4A6E" stroke="#00ADD8" stroke-width="2"/>
+  <text x="60" y="501" class="mono label" dominant-baseline="central">entryState</text>
+
+  <polygon points="154,494 161,501 154,508 147,501" fill="#451A03" stroke="#FBBF24" stroke-width="1.6"/>
+  <text x="167" y="501" class="sans label" dominant-baseline="central">Query q</text>
+
+  <line x1="234" y1="501" x2="258" y2="501" stroke="#00ADD8" stroke-width="2.4" marker-end="url(#arrow-cyan)"/>
+  <text x="266" y="501" class="sans label" dominant-baseline="central">Greedy (ef=1)</text>
+
+  <line x1="364" y1="501" x2="388" y2="501" stroke="#60A5FA" stroke-width="2.2" marker-end="url(#arrow-blue)"/>
+  <text x="396" y="501" class="sans label" dominant-baseline="central">L0 Beam (max(ef,k))</text>
+
+  <circle cx="534" cy="501" r="6" fill="#064E3B" stroke="#34D399" stroke-width="2"/>
+  <text x="546" y="501" class="sans label" dominant-baseline="central">Top-k Result</text>
+
+  <circle cx="642" cy="501" r="6" fill="#4C0519" stroke="#FB7185" stroke-width="1.6" stroke-dasharray="3 2"/>
+  <text x="654" y="501" class="sans label" dominant-baseline="central">Tombstone / Filtered (skip result)</text>
 </svg>

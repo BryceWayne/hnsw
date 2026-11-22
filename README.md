@@ -290,23 +290,27 @@ go run ./examples \
 
 ## Algorithm Overview
 
-![HNSW Multi-Layer Graph](./docs/images/hnsw.svg)
+![HNSW Multi-Layer Proximity Graph](./docs/images/hnsw.svg)
 
-HNSW builds a hierarchical proximity graph where upper layers act as sparse long-range skip links and layer 0 maintains dense local connectivity (`Mmax` edges per node).
+HNSW builds a hierarchical proximity graph where upper layers act as sparse long-range skip links (`≤ M`) and layer `0` maintains dense local connectivity (`≤ Mmax` edges per node) inside contiguous `256`-slot `arenaChunk` memory blocks.
 
-- **Search**: Starts at the atomic `entryState` top node, greedily descends from `MaxLevel` down to layer `1`, then runs a best-first beam search at layer `0` with beam width `max(efSearch, k)` using pooled `searchScratch` buffers and an atomic tombstone bitset.
+- **Search**: Starts at the atomic `entryState` top node, greedily descends from `MaxLevel` down to layer `1` (`ef = 1`), then runs a best-first beam search at layer `0` with beam width `max(efSearch, k)` using pooled `searchScratch` buffers and an atomic tombstone bitset.
 
-![Search Process](./docs/images/search-process.svg)
+  ![Two-Phase Search Process](./docs/images/search-process.svg)
+
+- **Search Beam Tuning (`EfSearch`)**: Upper layers always perform `greedyStep` (`ef = 1`); `EfSearch` (default `50`, runtime-mutable via `SetEfSearch` or per-query via `WithSearchEf`) controls only the layer-`0` beam width `max(EfSearch, k)`, while `EfConstruction` (default `200`) shapes graph connectivity during `Insert`.
+
+  ![EfSearch Impact on Recall and Latency](./docs/images/ef-impact.svg)
 
 - **Insertion & Upsert**: Validates and copies the input vector (storing inverse norms separately for `MetricCosine` so `Get` remains lossless), atomically replaces any existing key, samples a level using `mL = 1 / ln(M)`, descends greedily to `newLevel + 1`, and connects bidirectionally at each layer using Algorithm 4 diversity-aware neighbor selection (`WithHeuristic`).
 
-![Insertion Process](./docs/images/insertion-process.svg)
-![Heuristic Pruning](./docs/images/pruning-process.svg)
+  ![Insertion and Atomic Upsert Process](./docs/images/insertion-process.svg)
+
+  ![Algorithm 4 Diversity Heuristic Pruning](./docs/images/pruning-process.svg)
 
 - **Deletion & Compaction**: `Delete` and `DeleteBatch` flip bits in the per-chunk atomic tombstone bitset, unlink incoming edges, perform 2-hop neighborhood repair among surviving neighbors, and re-elect the entry point if needed. `Compact()` reclaims tombstoned arena slots and densely remaps live nodes.
 
-![Deletion Process](./docs/images/deletion-process.svg)
-![Ef Impact](./docs/images/ef-impact.svg)
+  ![Deletion, 2-Hop Repair, and Compaction Lifecycle](./docs/images/deletion-process.svg)
 
 ---
 

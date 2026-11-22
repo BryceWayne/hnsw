@@ -1,268 +1,202 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" viewBox="0 0 800 500">
-  <!-- Generator: Adobe Illustrator 29.1.0, SVG Export Plug-In . SVG Version: 2.1.0 Build 142)  -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" width="960" height="540" role="img" aria-labelledby="title desc">
+  <title id="title">HNSW Multi-Layer Proximity Graph Architecture</title>
+  <desc id="desc">Hierarchical Navigable Small World graph in Go showing intra-layer proximity edges across Layers 2, 1, and 0, vertical same-node identity projections, atomic entryState, M=16, Mmax=32, mL=1/ln(M), and 256-slot arenaChunk layout.</desc>
   <defs>
     <style>
-      .st0 {
-        fill: url(#linear-gradient9);
-      }
-
-      .st1 {
-        fill: url(#linear-gradient6);
-      }
-
-      .st2 {
-        fill: url(#linear-gradient8);
-      }
-
-      .st3 {
-        fill: url(#linear-gradient7);
-      }
-
-      .st4 {
-        fill: url(#linear-gradient5);
-      }
-
-      .st5 {
-        fill: url(#linear-gradient4);
-      }
-
-      .st6 {
-        fill: url(#linear-gradient13);
-      }
-
-      .st7 {
-        fill: url(#linear-gradient12);
-      }
-
-      .st8 {
-        fill: url(#linear-gradient15);
-      }
-
-      .st9 {
-        fill: url(#linear-gradient11);
-      }
-
-      .st10 {
-        fill: url(#linear-gradient10);
-      }
-
-      .st11 {
-        fill: url(#linear-gradient14);
-      }
-
-      .st12 {
-        fill: #0f172a;
-      }
-
-      .st13 {
-        fill: #94a3b8;
-        font-size: 14px;
-      }
-
-      .st13, .st14, .st15, .st16, .st17, .st18, .st19, .st20 {
-        isolation: isolate;
-      }
-
-      .st13, .st16 {
-        font-family: ArialMT, Arial;
-      }
-
-      .st21 {
-        stroke: #475569;
-      }
-
-      .st14 {
-        font-size: 16px;
-      }
-
-      .st14, .st15 {
-        fill: #e2e8f0;
-        font-family: Arial-BoldMT, Arial;
-        font-weight: 700;
-      }
-
-      .st15 {
-        font-size: 24px;
-      }
-
-      .st16 {
-        fill: #64748b;
-        font-size: 12px;
-      }
-
-      .st17 {
-        fill: url(#linear-gradient);
-      }
-
-      .st17, .st18, .st19, .st20 {
-        opacity: .8;
-      }
-
-      .st18 {
-        fill: url(#linear-gradient3);
-      }
-
-      .st19 {
-        fill: url(#linear-gradient1);
-      }
-
-      .st20 {
-        fill: url(#linear-gradient2);
-      }
+      .sans { font-family: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+      .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, 'Liberation Mono', 'DejaVu Sans Mono', monospace; }
+      .title { font-size: 20px; font-weight: 700; fill: #F8FAFC; }
+      .subtitle { font-size: 12px; font-weight: 400; fill: #94A3B8; }
+      .panel { fill: #152033; stroke: #293548; stroke-width: 1.25; }
+      .panel-title { font-size: 12.5px; font-weight: 700; fill: #F8FAFC; }
+      .label { font-size: 11.5px; font-weight: 500; fill: #E2E8F0; }
+      .muted { font-size: 11px; font-weight: 400; fill: #94A3B8; }
+      .node-id { font-size: 10.5px; font-weight: 700; fill: #F8FAFC; text-anchor: middle; dominant-baseline: central; }
+      .edge-l2 { stroke: #38BDF8; stroke-width: 2; fill: none; }
+      .edge-l1 { stroke: #60A5FA; stroke-width: 1.6; stroke-opacity: 0.75; fill: none; }
+      .edge-l0 { stroke: #64748B; stroke-width: 1.4; fill: none; }
+      .proj-line { stroke: #475569; stroke-width: 1.35; stroke-dasharray: 4 3; fill: none; }
     </style>
-    <linearGradient id="linear-gradient" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45225) scale(500 -70)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1e293b"/>
-      <stop offset="1" stop-color="#0f172a"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient1" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45315) scale(500 -70)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1e293b"/>
-      <stop offset="1" stop-color="#0f172a"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient2" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45405) scale(500 -70)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1e293b"/>
-      <stop offset="1" stop-color="#0f172a"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient3" x1="93.7" y1="644.5" x2="94.7" y2="643.5" gradientTransform="translate(-46756 45495) scale(500 -70)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#1e293b"/>
-      <stop offset="1" stop-color="#0f172a"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient4" x1="88.5" y1="639.8" x2="89.5" y2="638.8" gradientTransform="translate(-1774 15486) scale(24 -24)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient5" x1="87.4" y1="638.4" x2="88.4" y2="637.4" gradientTransform="translate(-1446 12990) scale(20 -20)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient6" x1="87.4" y1="638.4" x2="88.4" y2="637.4" gradientTransform="translate(-1346 12990) scale(20 -20)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient7" x1="85.8" y1="636.2" x2="86.7" y2="635.2" gradientTransform="translate(-1118 10494) scale(16 -16)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient8" x1="85.7" y1="636.2" x2="86.7" y2="635.2" gradientTransform="translate(-1018 10494) scale(16 -16)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient9" x1="85.7" y1="636.2" x2="86.7" y2="635.2" gradientTransform="translate(-918 10494) scale(16 -16)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient10" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-790 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient11" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-690 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient12" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-590 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient13" x1="83" y1="632.6" x2="84" y2="631.6" gradientTransform="translate(-490 7998) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient14" x1="127.6" y1="633.5" x2="128.6" y2="632.5" gradientTransform="translate(-880 7633) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#475569"/>
-      <stop offset="1" stop-color="#334155"/>
-    </linearGradient>
-    <linearGradient id="linear-gradient15" x1="116" y1="631" x2="117" y2="630" gradientTransform="translate(-740 7633) scale(12 -12)" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#60a5fa"/>
-      <stop offset="1" stop-color="#3b82f6"/>
-    </linearGradient>
+    <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" markerUnits="userSpaceOnUse" orient="auto-start-reverse">
+      <path d="M 1 1.5 L 9 5 L 1 8.5 z" fill="#00ADD8"/>
+    </marker>
   </defs>
-  <rect class="st12" width="800" height="500"/>
-  <text class="st15" transform="translate(202.5 52)"><tspan x="0" y="0">HNSW Structure Overview</tspan></text>
-  <g>
-    <rect class="st17" x="112" y="108" width="500" height="70" rx="8" ry="8"/>
-    <rect class="st19" x="112" y="198" width="500" height="70" rx="8" ry="8"/>
-    <rect class="st20" x="112" y="288" width="500" height="70" rx="8" ry="8"/>
-    <rect class="st18" x="112" y="378" width="500" height="70" rx="8" ry="8"/>
-  </g>
-  <g>
-    <g>
-      <text class="st14" transform="translate(42 148)"><tspan x="0" y="0">L3</tspan></text>
-      <text class="st13" transform="translate(662 148)"><tspan x="0" y="0">Skip List Layer</tspan></text>
-    </g>
-    <g>
-      <text class="st14" transform="translate(42 238)"><tspan x="0" y="0">L2</tspan></text>
-      <text class="st13" transform="translate(662 238)"><tspan x="0" y="0">Fast Navigation</tspan></text>
-    </g>
-    <g>
-      <text class="st14" transform="translate(42 328)"><tspan x="0" y="0">L1</tspan></text>
-      <text class="st13" transform="translate(662 328)"><tspan x="0" y="0">Refined Search</tspan></text>
-    </g>
-    <g>
-      <text class="st14" transform="translate(42 418)"><tspan x="0" y="0">L0</tspan></text>
-      <text class="st13" transform="translate(662 418)"><tspan x="0" y="0">Ground Layer</tspan></text>
-    </g>
-  </g>
-  <g>
-    <path class="st21" d="M362,143l-50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.2;0.4;0.2"/>
-    </path>
-    <path class="st21" d="M362,143l50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.2;0.4;0.2"/>
-    </path>
-    <path class="st21" d="M312,233l-50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
-    </path>
-    <path class="st21" d="M312,233l50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
-    </path>
-    <path class="st21" d="M412,233l-50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
-    </path>
-    <path class="st21" d="M412,233l50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.3;0.5;0.3"/>
-    </path>
-    <path class="st21" d="M262,323l-50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
-    </path>
-    <path class="st21" d="M262,323l50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
-    </path>
-    <path class="st21" d="M362,323l-50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
-    </path>
-    <path class="st21" d="M362,323l50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
-    </path>
-    <path class="st21" d="M462,323l-50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
-    </path>
-    <path class="st21" d="M462,323l50,90">
-      <animate accumulate="none" additive="replace" attributeName="opacity" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="0.4;0.6;0.4"/>
-    </path>
-  </g>
-  <g>
-    <circle class="st5" cx="362" cy="143" r="12">
-      <animate accumulate="none" additive="replace" attributeName="r" calcMode="linear" dur="3s" fill="remove" repeatCount="indefinite" restart="always" values="12;13;12"/>
-    </circle>
-    <circle class="st4" cx="312" cy="233" r="10"/>
-    <circle class="st1" cx="412" cy="233" r="10"/>
-    <circle class="st3" cx="262" cy="323" r="8"/>
-    <circle class="st2" cx="362" cy="323" r="8"/>
-    <circle class="st0" cx="462" cy="323" r="8"/>
-    <circle class="st10" cx="212" cy="413" r="6"/>
-    <circle class="st9" cx="312" cy="413" r="6"/>
-    <circle class="st7" cx="412" cy="413" r="6"/>
-    <circle class="st6" cx="512" cy="413" r="6"/>
-  </g>
-  <g>
-    <text class="st16" transform="translate(112 468)"><tspan x="0" y="0">• Fewer connections</tspan></text>
-    <text class="st16" transform="translate(312 468)"><tspan x="0" y="0">• Balanced distribution</tspan></text>
-    <text class="st16" transform="translate(512 468)"><tspan x="0" y="0">• Most connections</tspan></text>
-  </g>
-  <g>
-    <circle class="st11" cx="656.8" cy="37" r="6"/>
-    <text class="st13" transform="translate(671.8 42)"><tspan x="0" y="0">Regular Node</tspan></text>
-    <circle class="st8" cx="658.2" cy="67" r="6"/>
-    <text class="st13" transform="translate(673.2 72)"><tspan x="0" y="0">Entry Point</tspan></text>
-  </g>
+
+  <!-- Outer Card -->
+  <rect x="2" y="2" width="956" height="536" rx="14" fill="#0F172A" stroke="#334155" stroke-width="1.5"/>
+
+  <!-- Header -->
+  <text x="28" y="38" class="sans title">Hierarchical Navigable Small World (HNSW)</text>
+  <text x="28" y="57" class="sans subtitle">Intra-layer proximity graph in Go: sparse upper skip layers (M=16) over dense Layer 0 (Mmax=32)</text>
+
+  <!-- Brand Badge Pill -->
+  <rect x="764" y="21" width="168" height="36" rx="8" fill="#0B172A" stroke="#00ADD8" stroke-opacity="0.75" stroke-width="1.25"/>
+  <line x1="781" y1="34" x2="793" y2="34" stroke="#38BDF8" stroke-width="1.5"/>
+  <line x1="781" y1="34" x2="787" y2="45" stroke="#00ADD8" stroke-width="1.5"/>
+  <line x1="793" y1="34" x2="787" y2="45" stroke="#34D399" stroke-width="1.5"/>
+  <circle cx="781" cy="34" r="2.7" fill="#00ADD8"/>
+  <circle cx="793" cy="34" r="2.7" fill="#38BDF8"/>
+  <circle cx="787" cy="45" r="2.7" fill="#34D399"/>
+  <text x="804" y="39" class="mono" font-size="14" font-weight="700" fill="#38BDF8" dominant-baseline="central">hnsw</text>
+  <line x1="848" y1="29" x2="848" y2="49" stroke="#334155" stroke-width="1.2"/>
+  <text x="858" y="39" class="mono" font-size="11" font-weight="600" fill="#CBD5E1" dominant-baseline="central">Go • ANN</text>
+
+  <!-- Left Multi-Layer Graph Panels -->
+  <!-- Layer 2 -->
+  <rect x="28" y="78" width="620" height="106" rx="10" class="panel"/>
+  <rect x="42" y="90" width="34" height="22" rx="6" fill="#0C4A6E" stroke="#00ADD8" stroke-width="1.2"/>
+  <text x="59" y="101" class="mono" font-size="11.5" font-weight="700" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">L2</text>
+  <text x="86" y="101" class="sans label" dominant-baseline="central">Top Skip Layer</text>
+  <text x="86" y="120" class="mono muted" dominant-baseline="central">max ≤ M (16)</text>
+
+  <!-- Layer 1 -->
+  <rect x="28" y="198" width="620" height="120" rx="10" class="panel"/>
+  <rect x="42" y="210" width="34" height="22" rx="6" fill="#1E3A8A" stroke="#60A5FA" stroke-width="1.2"/>
+  <text x="59" y="221" class="mono" font-size="11.5" font-weight="700" fill="#93C5FD" text-anchor="middle" dominant-baseline="central">L1</text>
+  <text x="86" y="221" class="sans label" dominant-baseline="central">Routing Layer</text>
+  <text x="86" y="240" class="mono muted" dominant-baseline="central">max ≤ M (16)</text>
+
+  <!-- Layer 0 -->
+  <rect x="28" y="332" width="620" height="140" rx="10" class="panel"/>
+  <rect x="42" y="344" width="34" height="22" rx="6" fill="#064E3B" stroke="#10B981" stroke-width="1.2"/>
+  <text x="59" y="355" class="mono" font-size="11.5" font-weight="700" fill="#34D399" text-anchor="middle" dominant-baseline="central">L0</text>
+
+  <!-- Vertical Same-Node Identity Projections (connecting matching node IDs across layers) -->
+  <!-- v2: L2(246,136) -> L1(246,260) -> L0(246,400) -->
+  <line x1="246" y1="153" x2="246" y2="245" class="proj-line"/>
+  <line x1="246" y1="275" x2="246" y2="385" class="proj-line"/>
+  <!-- v6: L2(510,136) -> L1(510,256) -> L0(510,398) -->
+  <line x1="510" y1="151" x2="510" y2="241" class="proj-line"/>
+  <line x1="510" y1="271" x2="510" y2="383" class="proj-line"/>
+  <!-- v0: L1(152,276) -> L0(152,412) -->
+  <line x1="152" y1="291" x2="152" y2="397" class="proj-line"/>
+  <!-- v4: L1(382,278) -> L0(382,410) -->
+  <line x1="382" y1="293" x2="382" y2="395" class="proj-line"/>
+  <!-- v7: L1(604,274) -> L0(604,412) -->
+  <line x1="604" y1="289" x2="604" y2="397" class="proj-line"/>
+
+  <!-- Layer 0 Title (drawn above projection line with panel-matched backdrop) -->
+  <rect x="82" y="344" width="114" height="38" fill="#152033"/>
+  <text x="86" y="355" class="sans label" dominant-baseline="central">Dense Base Layer</text>
+  <text x="86" y="374" class="mono muted" dominant-baseline="central">max ≤ Mmax (32)</text>
+
+  <!-- Layer 2 Intra-Layer Edges & Nodes -->
+  <line x1="263" y1="136" x2="495" y2="136" class="edge-l2"/>
+  <rect x="318" y="114" width="122" height="18" rx="4" fill="#0B172A" stroke="#293548"/>
+  <text x="379" y="123" class="sans muted" text-anchor="middle" dominant-baseline="central">long-range skip link</text>
+
+  <!-- entryState Pill -->
+  <rect x="290" y="90" width="144" height="22" rx="6" fill="#0C4A6E" stroke="#00ADD8" stroke-width="1"/>
+  <text x="362" y="101" class="mono" font-size="10.5" font-weight="600" fill="#7DD3FC" text-anchor="middle" dominant-baseline="central">entryState: (L2, v2)</text>
+  <line x1="290" y1="104" x2="262" y2="123" stroke="#00ADD8" stroke-width="1.3" marker-end="url(#arrow-cyan)"/>
+
+  <!-- L2 Nodes -->
+  <circle cx="246" cy="136" r="20" fill="none" stroke="#00ADD8" stroke-opacity="0.35" stroke-width="1.5"/>
+  <circle cx="246" cy="136" r="15" fill="#0C4A6E" stroke="#00ADD8" stroke-width="2.2"/>
+  <text x="246" y="136" class="mono node-id">v2</text>
+
+  <circle cx="510" cy="136" r="15" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="510" y="136" class="mono node-id">v6</text>
+
+  <!-- Layer 1 Intra-Layer Edges & Nodes -->
+  <line x1="152" y1="276" x2="246" y2="260" class="edge-l1"/>
+  <line x1="246" y1="260" x2="382" y2="278" class="edge-l1"/>
+  <line x1="246" y1="260" x2="510" y2="256" class="edge-l1"/>
+  <line x1="382" y1="278" x2="510" y2="256" class="edge-l1"/>
+  <line x1="510" y1="256" x2="604" y2="274" class="edge-l1"/>
+  <path d="M 152 276 Q 267 308 382 278" class="edge-l1"/>
+
+  <circle cx="152" cy="276" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="152" y="276" class="mono node-id">v0</text>
+  <circle cx="246" cy="260" r="14" fill="#0C4A6E" stroke="#38BDF8" stroke-width="2"/>
+  <text x="246" y="260" class="mono node-id">v2</text>
+  <circle cx="382" cy="278" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="382" y="278" class="mono node-id">v4</text>
+  <circle cx="510" cy="256" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="510" y="256" class="mono node-id">v6</text>
+  <circle cx="604" cy="274" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="604" y="274" class="mono node-id">v7</text>
+
+  <!-- Layer 0 Intra-Layer Edges & Nodes -->
+  <!-- v0(152,412) v1(198,446) v2(246,400) v3(312,444) v4(382,410) v5(448,446) v6(510,398) v8(558,444) v7(604,412) -->
+  <line x1="152" y1="412" x2="198" y2="446" class="edge-l0"/>
+  <line x1="152" y1="412" x2="246" y2="400" class="edge-l0"/>
+  <line x1="198" y1="446" x2="246" y2="400" class="edge-l0"/>
+  <line x1="198" y1="446" x2="312" y2="444" class="edge-l0"/>
+  <line x1="246" y1="400" x2="312" y2="444" class="edge-l0"/>
+  <line x1="246" y1="400" x2="382" y2="410" class="edge-l0"/>
+  <line x1="312" y1="444" x2="382" y2="410" class="edge-l0"/>
+  <line x1="312" y1="444" x2="448" y2="446" class="edge-l0"/>
+  <line x1="382" y1="410" x2="448" y2="446" class="edge-l0"/>
+  <line x1="382" y1="410" x2="510" y2="398" class="edge-l0"/>
+  <line x1="448" y1="446" x2="510" y2="398" class="edge-l0"/>
+  <line x1="448" y1="446" x2="558" y2="444" class="edge-l0"/>
+  <line x1="510" y1="398" x2="558" y2="444" class="edge-l0"/>
+  <line x1="510" y1="398" x2="604" y2="412" class="edge-l0"/>
+  <line x1="558" y1="444" x2="604" y2="412" class="edge-l0"/>
+  <path d="M 152 412 Q 112 436 198 446" class="edge-l0"/>
+
+  <circle cx="152" cy="412" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="152" y="412" class="mono node-id">v0</text>
+  <circle cx="198" cy="446" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="198" y="446" class="mono node-id">v1</text>
+  <circle cx="246" cy="400" r="14" fill="#0C4A6E" stroke="#38BDF8" stroke-width="2"/>
+  <text x="246" y="400" class="mono node-id">v2</text>
+  <circle cx="312" cy="444" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="312" y="444" class="mono node-id">v3</text>
+  <circle cx="382" cy="410" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="382" y="410" class="mono node-id">v4</text>
+  <circle cx="448" cy="446" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="448" y="446" class="mono node-id">v5</text>
+  <circle cx="510" cy="398" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="510" y="398" class="mono node-id">v6</text>
+  <circle cx="558" cy="444" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="558" y="444" class="mono node-id">v8</text>
+  <circle cx="604" cy="412" r="14" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="604" y="412" class="mono node-id">v7</text>
+
+  <!-- Right Annotation Column -->
+  <!-- Card 1: Level Sampling & Atomic Entry -->
+  <rect x="664" y="78" width="268" height="106" rx="10" class="panel"/>
+  <text x="680" y="100" class="sans panel-title" fill="#38BDF8">1. Level Sampling &amp; Entry</text>
+  <text x="680" y="121" class="mono label">mL = 1 / ln(M)</text>
+  <text x="680" y="140" class="mono muted">lvl = ⌊-ln(U) · mL⌋  (cap 32)</text>
+  <text x="680" y="162" class="mono" font-size="10.5" fill="#CBD5E1">entryState: (lvl &lt;&lt; 32) | id</text>
+
+  <!-- Card 2: Degree Bounds & Diversity -->
+  <rect x="664" y="198" width="268" height="120" rx="10" class="panel"/>
+  <text x="680" y="220" class="sans panel-title" fill="#60A5FA">2. Degree Bounds (Go)</text>
+  <text x="680" y="242" class="sans label">Upper Layers (L1+): <tspan class="mono" fill="#38BDF8">≤ M = 16</tspan></text>
+  <text x="680" y="264" class="sans label">Layer 0 (Base): <tspan class="mono" fill="#34D399">≤ Mmax = 32</tspan></text>
+  <text x="680" y="286" class="mono muted">EfConstruction = 200 • EfSearch = 50</text>
+  <text x="680" y="304" class="mono muted">WithHeuristic(true)  (Alg. 4)</text>
+
+  <!-- Card 3: arenaChunk Memory Layout -->
+  <rect x="664" y="332" width="268" height="140" rx="10" class="panel"/>
+  <text x="680" y="354" class="sans panel-title" fill="#34D399">3. arenaChunk[K] Layout</text>
+  <rect x="680" y="366" width="236" height="24" rx="5" fill="#0F172A" stroke="#334155"/>
+  <text x="690" y="378" class="mono" font-size="10.5" fill="#E2E8F0" dominant-baseline="central">vecs: float32 / QuantFloat16</text>
+  <rect x="680" y="396" width="236" height="24" rx="5" fill="#0F172A" stroke="#334155"/>
+  <text x="690" y="408" class="mono" font-size="10.5" fill="#E2E8F0" dominant-baseline="central">l0Edges: 256 × Mmax flat slice</text>
+  <rect x="680" y="426" width="236" height="24" rx="5" fill="#0F172A" stroke="#334155"/>
+  <text x="690" y="438" class="mono" font-size="10.5" fill="#FB7185" dominant-baseline="central">deleted: [4]atomic.Uint64 (256b)</text>
+  <text x="680" y="462" class="sans muted">256 slots/chunk • + invNorms (Cosine)</text>
+
+  <!-- Footer Legend Bar -->
+  <rect x="28" y="484" width="904" height="34" rx="8" class="panel"/>
+  <circle cx="52" cy="501" r="6" fill="#0C4A6E" stroke="#00ADD8" stroke-width="2"/>
+  <text x="65" y="501" class="sans label" dominant-baseline="central">entryState Top Node</text>
+
+  <circle cx="222" cy="501" r="6" fill="#1E293B" stroke="#64748B" stroke-width="1.75"/>
+  <text x="235" y="501" class="sans label" dominant-baseline="central">Vector Node (v0..v8)</text>
+
+  <line x1="382" y1="501" x2="408" y2="501" stroke="#60A5FA" stroke-width="2"/>
+  <text x="416" y="501" class="sans label" dominant-baseline="central">Intra-Layer Proximity Edge</text>
+
+  <line x1="600" y1="501" x2="626" y2="501" stroke="#475569" stroke-width="1.5" stroke-dasharray="4 3"/>
+  <text x="634" y="501" class="sans label" dominant-baseline="central">Same-Node Layer Projection</text>
+
+  <rect x="816" y="494" width="14" height="14" rx="3" fill="#064E3B" stroke="#10B981" stroke-width="1.2"/>
+  <text x="837" y="501" class="mono label" dominant-baseline="central">Mmax = 2M</text>
 </svg>
