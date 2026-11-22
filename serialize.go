@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"hash/maphash"
 	"io"
 	"math"
 	"math/rand"
@@ -636,7 +637,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		quant:          quant,
 		heuristic:      heurByte == 1,
 		seed:           effSeed,
-		extToInt:       make(map[K]uint32),
+		keySeed:        maphash.MakeSeed(),
 		rng:            rand.New(rand.NewSource(effSeed)),
 	}
 	idx.efSearch.Store(int64(effEfSearch))
@@ -647,9 +648,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 	if err != nil {
 		return nil, err
 	}
-	if len(keys) > 0 {
-		idx.extToInt = make(map[K]uint32, len(keys))
-	}
+	idx.initExtShards(len(keys))
 
 	// Read vectors chunk by chunk directly into arenaChunks (OOM-safe).
 	dimInt := int(dim)
@@ -697,10 +696,11 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		}
 
 		extKey := keys[id]
-		if _, dup := idx.extToInt[extKey]; dup {
+		sh := idx.extShardFor(extKey)
+		if _, dup := sh.m[extKey]; dup {
 			return nil, fmt.Errorf("%w: duplicate key in serialized stream", ErrCorruptedIndex)
 		}
-		idx.extToInt[extKey] = uid
+		sh.m[extKey] = uid
 		chunk.intToExt[slot] = extKey
 
 		off := slot * dimInt

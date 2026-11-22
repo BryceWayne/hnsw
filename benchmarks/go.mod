@@ -1,6 +1,6 @@
 module github.com/BryceWayne/hnsw/benchmarks
 
-go 1.23.0
+go 1.27.0
 
 replace github.com/BryceWayne/hnsw => ..
 
@@ -22,5 +22,5 @@ require (
 	github.com/viterin/partial v1.1.0 // indirect
 	github.com/viterin/vek v0.4.2 // indirect
 	golang.org/x/exp v0.0.0-20240506185415-9bf2ced13842 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/sys v0.50.0 // indirect
 )

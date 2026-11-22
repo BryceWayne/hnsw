@@ -70,7 +70,12 @@ func cosineWithInvNormsF16F32(a []uint16, b []float32, invA, invB float32) float
 		invA > 1e15 || invB > 1e15 || invA < 1e-15 || invB < 1e-15 {
 		return cosineFallback64F16F32(a, b)
 	}
-	dot := simd.DotProductF16F32(a, b)
+	var dot float32
+	if simd.HasFastF16() {
+		dot = simd.DotProductF16F32Fast(a, b)
+	} else {
+		dot = simd.DotProductF16F32(a, b)
+	}
 	if dot != dot || math.IsInf(float64(dot), 0) {
 		return cosineFallback64F16F32(a, b)
 	}
@@ -85,7 +90,12 @@ func cosineWithInvNormsF16F16(a, b []uint16, invA, invB float32) float32 {
 		invA > 1e15 || invB > 1e15 || invA < 1e-15 || invB < 1e-15 {
 		return cosineFallback64F16F16(a, b)
 	}
-	dot := simd.DotProductF16F16(a, b)
+	var dot float32
+	if simd.HasFastF16() {
+		dot = simd.DotProductF16F16Fast(a, b)
+	} else {
+		dot = simd.DotProductF16F16(a, b)
+	}
 	if dot != dot || math.IsInf(float64(dot), 0) {
 		return cosineFallback64F16F16(a, b)
 	}

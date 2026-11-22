@@ -219,7 +219,12 @@ func cosineWithInvNorms(a, b []float32, invA, invB float32) float32 {
 		invA > 1e15 || invB > 1e15 || invA < 1e-15 || invB < 1e-15 {
 		return cosineFallback64(a, b)
 	}
-	dot := simd.DotProduct(a, b)
+	var dot float32
+	if simd.HasFastF32() {
+		dot = simd.DotProductFast(a, b)
+	} else {
+		dot = simd.DotProduct(a, b)
+	}
 	if dot != dot || math.IsInf(float64(dot), 0) {
 		return cosineFallback64(a, b)
 	}

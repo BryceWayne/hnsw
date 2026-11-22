@@ -20,6 +20,42 @@ func l2SquaredF16F16NEON(a, b *uint16, n int) float32
 //go:noescape
 func dotProductF16F16NEON(a, b *uint16, n int) float32
 
+// HasFastF32 reports whether hardware-accelerated float32 SIMD kernels are active.
+func HasFastF32() bool { return true }
+
+// HasFastF16 reports whether hardware-accelerated binary16 SIMD kernels are active.
+func HasFastF16() bool { return true }
+
+// L2SquaredFast invokes the ARM64 NEON L2-squared kernel directly (inlinable wrapper).
+func L2SquaredFast(a, b []float32) float32 {
+	return l2SquaredNEON(&a[0], &b[0], len(a))
+}
+
+// DotProductFast invokes the ARM64 NEON dot-product kernel directly (inlinable wrapper).
+func DotProductFast(a, b []float32) float32 {
+	return dotProductNEON(&a[0], &b[0], len(a))
+}
+
+// L2SquaredF16F32Fast invokes the ARM64 NEON F16-F32 L2-squared kernel directly (inlinable wrapper).
+func L2SquaredF16F32Fast(a []uint16, b []float32) float32 {
+	return l2SquaredF16F32NEON(&a[0], &b[0], len(a))
+}
+
+// DotProductF16F32Fast invokes the ARM64 NEON F16-F32 dot-product kernel directly (inlinable wrapper).
+func DotProductF16F32Fast(a []uint16, b []float32) float32 {
+	return dotProductF16F32NEON(&a[0], &b[0], len(a))
+}
+
+// L2SquaredF16F16Fast invokes the ARM64 NEON F16-F16 L2-squared kernel directly (inlinable wrapper).
+func L2SquaredF16F16Fast(a, b []uint16) float32 {
+	return l2SquaredF16F16NEON(&a[0], &b[0], len(a))
+}
+
+// DotProductF16F16Fast invokes the ARM64 NEON F16-F16 dot-product kernel directly (inlinable wrapper).
+func DotProductF16F16Fast(a, b []uint16) float32 {
+	return dotProductF16F16NEON(&a[0], &b[0], len(a))
+}
+
 // L2Squared returns the squared Euclidean distance between a and b using ARM64 NEON.
 func L2Squared(a, b []float32) float32 {
 	n := len(a)

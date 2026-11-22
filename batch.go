@@ -221,11 +221,12 @@ func (idx *Index[K]) DeleteBatch(ids []K) int {
 
 	deadIDs := make([]uint32, 0, len(ids))
 	for _, extID := range ids {
-		oldID, ok := idx.extToInt[extID]
+		sh := idx.extShardFor(extID)
+		oldID, ok := sh.m[extID]
 		if !ok {
 			continue
 		}
-		delete(idx.extToInt, extID)
+		delete(sh.m, extID)
 		if idx.markDeleted(oldID) {
 			deadIDs = append(deadIDs, oldID)
 		}
