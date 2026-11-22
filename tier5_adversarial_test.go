@@ -17,6 +17,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/iotest"
+
+	"github.com/BryceWayne/hnsw/internal/simd"
 )
 
 type tier5GobKey struct {
@@ -443,23 +445,23 @@ func TestTier5_DistanceIdenticalExtremeScalesAndGuards(t *testing.T) {
 	}
 
 	// Empty and mismatched-length white-box guards.
-	if got := l2Squared(nil, nil); got != 0 {
-		t.Errorf("l2Squared(nil, nil) = %v, want 0", got)
+	if got := simd.L2Squared(nil, nil); got != 0 {
+		t.Errorf("L2Squared(nil, nil) = %v, want 0", got)
 	}
-	if got := dotProduct(nil, nil); got != 0 {
-		t.Errorf("dotProduct(nil, nil) = %v, want 0", got)
+	if got := simd.DotProduct(nil, nil); got != 0 {
+		t.Errorf("DotProduct(nil, nil) = %v, want 0", got)
 	}
-	if got := l2Squared([]float32{1, 2}, []float32{1}); got != 0 {
-		t.Errorf("l2Squared(short b) = %v, want 0", got)
+	if got := simd.L2Squared([]float32{1, 2}, []float32{1}); got != 0 {
+		t.Errorf("L2Squared(short b) = %v, want 0", got)
 	}
-	if got := dotProduct([]float32{1, 2}, []float32{1}); got != 0 {
-		t.Errorf("dotProduct(short b) = %v, want 0", got)
+	if got := simd.DotProduct([]float32{1, 2}, []float32{1}); got != 0 {
+		t.Errorf("DotProduct(short b) = %v, want 0", got)
 	}
-	if got := l2SquaredGo(nil, nil); got != 0 {
-		t.Errorf("l2SquaredGo(nil, nil) = %v, want 0", got)
+	if got := simd.L2SquaredGo(nil, nil); got != 0 {
+		t.Errorf("L2SquaredGo(nil, nil) = %v, want 0", got)
 	}
-	if got := dotProductGo(nil, nil); got != 0 {
-		t.Errorf("dotProductGo(nil, nil) = %v, want 0", got)
+	if got := simd.DotProductGo(nil, nil); got != 0 {
+		t.Errorf("DotProductGo(nil, nil) = %v, want 0", got)
 	}
 }
 

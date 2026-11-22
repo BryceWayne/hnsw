@@ -14,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+
+	"github.com/BryceWayne/hnsw/internal/simd"
 )
 
 const (
@@ -716,7 +718,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 				}
 				for j := range sub {
 					h := binary.LittleEndian.Uint16(buf[j*2:])
-					if !isFloat16Finite(h) {
+					if !simd.IsFloat16Finite(h) {
 						return nil, fmt.Errorf("%w: non-finite float16 in serialized vector", ErrCorruptedIndex)
 					}
 					sub[j] = h

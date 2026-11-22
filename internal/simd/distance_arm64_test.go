@@ -1,6 +1,6 @@
 //go:build arm64 && !purego
 
-package hnsw
+package simd
 
 import (
 	"fmt"
@@ -29,14 +29,14 @@ func TestNEONKernelParity(t *testing.T) {
 				b := raw2[off : off+dim]
 
 				gotL2 := l2SquaredNEON(&a[0], &b[0], dim)
-				wantL2 := l2SquaredGo(a, b)
+				wantL2 := L2SquaredGo(a, b)
 				tolL2 := 1e-4 * math.Max(1, float64(wantL2))
 				if math.Abs(float64(gotL2-wantL2)) > tolL2 {
 					t.Errorf("off=%d l2SquaredNEON=%v, go=%v", off, gotL2, wantL2)
 				}
 
 				gotDot := dotProductNEON(&a[0], &b[0], dim)
-				wantDot := dotProductGo(a, b)
+				wantDot := DotProductGo(a, b)
 				tolDot := 1e-4 * math.Max(1, math.Abs(float64(wantDot)))
 				if math.Abs(float64(gotDot-wantDot)) > tolDot {
 					t.Errorf("off=%d dotProductNEON=%v, go=%v", off, gotDot, wantDot)
@@ -79,7 +79,7 @@ func BenchmarkDistanceNEONVsFallback(b *testing.B) {
 		b.Run(fmt.Sprintf("L2Sq_dim=%d_Go", dim), func(b *testing.B) {
 			var sink float32
 			for i := 0; i < b.N; i++ {
-				sink += l2SquaredGo(a, v)
+				sink += L2SquaredGo(a, v)
 			}
 			_ = sink
 		})
@@ -93,7 +93,7 @@ func BenchmarkDistanceNEONVsFallback(b *testing.B) {
 		b.Run(fmt.Sprintf("Dot_dim=%d_Go", dim), func(b *testing.B) {
 			var sink float32
 			for i := 0; i < b.N; i++ {
-				sink += dotProductGo(a, v)
+				sink += DotProductGo(a, v)
 			}
 			_ = sink
 		})

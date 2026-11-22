@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 	"unsafe"
+
+	"github.com/BryceWayne/hnsw/internal/simd"
 )
 
 const (
@@ -289,29 +291,29 @@ func (idx *Index[K]) distQueryAt(chunk *arenaChunk[K], slot int, query []float32
 		vec := idx.vectorF16At(chunk, slot)
 		switch idx.metric {
 		case MetricEuclidean, MetricSquaredEuclidean:
-			return l2SquaredF16F32(vec, query)
+			return simd.L2SquaredF16F32(vec, query)
 		case MetricCosine:
 			return cosineWithInvNormsF16F32(vec, query, chunk.invNorms[slot], qInvNorm)
 		case MetricDotProduct:
-			d := dotProductF16F32(vec, query)
+			d := simd.DotProductF16F32(vec, query)
 			if d == 0 {
 				return 0
 			}
 			return -d
 		default:
 			tmp := make([]float32, idx.dim)
-			decodeFloat16Slice(tmp, vec)
+			simd.DecodeFloat16Slice(tmp, vec)
 			return idx.customDist(tmp, query)
 		}
 	}
 	vec := idx.vectorAt(chunk, slot)
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
-		return l2Squared(vec, query)
+		return simd.L2Squared(vec, query)
 	case MetricCosine:
 		return cosineWithInvNorms(vec, query, chunk.invNorms[slot], qInvNorm)
 	case MetricDotProduct:
-		d := dotProduct(vec, query)
+		d := simd.DotProduct(vec, query)
 		if d == 0 {
 			return 0
 		}
@@ -324,11 +326,11 @@ func (idx *Index[K]) distQueryAt(chunk *arenaChunk[K], slot int, query []float32
 func (idx *Index[K]) distVecs(va []float32, invA float32, vb []float32, invB float32) float32 {
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
-		return l2Squared(va, vb)
+		return simd.L2Squared(va, vb)
 	case MetricCosine:
 		return cosineWithInvNorms(va, vb, invA, invB)
 	case MetricDotProduct:
-		d := dotProduct(va, vb)
+		d := simd.DotProduct(va, vb)
 		if d == 0 {
 			return 0
 		}
@@ -341,11 +343,11 @@ func (idx *Index[K]) distVecs(va []float32, invA float32, vb []float32, invB flo
 func (idx *Index[K]) distVecsF16(va []uint16, invA float32, vb []uint16, invB float32, scratch *searchScratch) float32 {
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
-		return l2SquaredF16F16(va, vb)
+		return simd.L2SquaredF16F16(va, vb)
 	case MetricCosine:
 		return cosineWithInvNormsF16F16(va, vb, invA, invB)
 	case MetricDotProduct:
-		d := dotProductF16F16(va, vb)
+		d := simd.DotProductF16F16(va, vb)
 		if d == 0 {
 			return 0
 		}
@@ -356,14 +358,14 @@ func (idx *Index[K]) distVecsF16(va []uint16, invA float32, vb []uint16, invB fl
 				scratch.tmpVecA = make([]float32, idx.dim)
 				scratch.tmpVecB = make([]float32, idx.dim)
 			}
-			decodeFloat16Slice(scratch.tmpVecA[:idx.dim], va)
-			decodeFloat16Slice(scratch.tmpVecB[:idx.dim], vb)
+			simd.DecodeFloat16Slice(scratch.tmpVecA[:idx.dim], va)
+			simd.DecodeFloat16Slice(scratch.tmpVecB[:idx.dim], vb)
 			return idx.customDist(scratch.tmpVecA[:idx.dim], scratch.tmpVecB[:idx.dim])
 		}
 		fa := make([]float32, idx.dim)
 		fb := make([]float32, idx.dim)
-		decodeFloat16Slice(fa, va)
-		decodeFloat16Slice(fb, vb)
+		simd.DecodeFloat16Slice(fa, va)
+		simd.DecodeFloat16Slice(fb, vb)
 		return idx.customDist(fa, fb)
 	}
 }
@@ -490,7 +492,7 @@ func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
 	off := slot * idx.dim
 	if idx.quant == QuantFloat16 {
 		dst := chunk.vecsF16[off : off+idx.dim]
-		encodeFloat16Slice(dst, vec)
+		simd.EncodeFloat16Slice(dst, vec)
 		if idx.metric == MetricCosine {
 			chunk.invNorms[slot] = computeInvNormF16(dst)
 		}
@@ -668,9 +670,9 @@ func (idx *Index[K]) greedyStep(currID uint32, currDist float32, query []float32
 			if isL2 {
 				chunk, slot := idx.getChunk(nbrID)
 				if isF16 {
-					d = l2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+					d = simd.L2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
 				} else {
-					d = l2Squared(idx.vectorAt(chunk, slot), query)
+					d = simd.L2Squared(idx.vectorAt(chunk, slot), query)
 				}
 			} else {
 				d = idx.distQuery(nbrID, query, qInvNorm)
@@ -713,9 +715,9 @@ func (idx *Index[K]) searchLayerInsert(query []float32, qInvNorm float32, ep uin
 			var d float32
 			if isL2 {
 				if isF16 {
-					d = l2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+					d = simd.L2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
 				} else {
-					d = l2Squared(idx.vectorAt(chunk, slot), query)
+					d = simd.L2Squared(idx.vectorAt(chunk, slot), query)
 				}
 			} else {
 				d = idx.distQueryAt(chunk, slot, query, qInvNorm)
@@ -800,7 +802,7 @@ func (idx *Index[K]) selectNeighborsFromIDs(baseID uint32, ids []uint32, maxConn
 			if !dup {
 				var d float32
 				if isL2 {
-					d = l2SquaredF16F16(baseVec, idx.vectorF16At(cChunk, cSlot))
+					d = simd.L2SquaredF16F16(baseVec, idx.vectorF16At(cChunk, cSlot))
 				} else {
 					var cInvNorm float32
 					if idx.metric == MetricCosine {
@@ -834,7 +836,7 @@ func (idx *Index[K]) selectNeighborsFromIDs(baseID uint32, ids []uint32, maxConn
 		if !dup {
 			var d float32
 			if isL2 {
-				d = l2Squared(baseVec, idx.vectorAt(cChunk, cSlot))
+				d = simd.L2Squared(baseVec, idx.vectorAt(cChunk, cSlot))
 			} else {
 				var cInvNorm float32
 				if idx.metric == MetricCosine {
@@ -889,7 +891,7 @@ func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *
 			good := true
 			if isL2 {
 				for _, sVec := range selectedVecsF16 {
-					if l2SquaredF16F16(eVec, sVec) < e.dist {
+					if simd.L2SquaredF16F16(eVec, sVec) < e.dist {
 						good = false
 						break
 					}
@@ -945,7 +947,7 @@ func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *
 		good := true
 		if isL2 {
 			for _, sVec := range selectedVecs {
-				if l2Squared(eVec, sVec) < e.dist {
+				if simd.L2Squared(eVec, sVec) < e.dist {
 					good = false
 					break
 				}
@@ -1237,7 +1239,7 @@ func (idx *Index[K]) Get(id K) ([]float32, bool) {
 	}
 	out := make([]float32, idx.dim)
 	if idx.quant == QuantFloat16 {
-		decodeFloat16Slice(out, idx.vectorF16At(chunk, slot))
+		simd.DecodeFloat16Slice(out, idx.vectorF16At(chunk, slot))
 	} else {
 		copy(out, idx.vectorAt(chunk, slot))
 	}

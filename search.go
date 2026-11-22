@@ -3,6 +3,8 @@ package hnsw
 import (
 	"context"
 	"math"
+
+	"github.com/BryceWayne/hnsw/internal/simd"
 )
 
 // Search returns up to k approximate nearest neighbors to query ordered by ascending distance.
@@ -135,9 +137,9 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 			var d float32
 			if isL2 {
 				if isF16 {
-					d = l2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+					d = simd.L2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
 				} else {
-					d = l2Squared(idx.vectorAt(chunk, slot), query)
+					d = simd.L2Squared(idx.vectorAt(chunk, slot), query)
 				}
 			} else {
 				d = idx.distQueryAt(chunk, slot, query, qInvNorm)

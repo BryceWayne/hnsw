@@ -66,13 +66,13 @@ jobs:
         run: go vet ./...
 
       - name: Test NEON + Race
-        run: go test -race -v -run='TestNEONKernelParity|TestRecall10K|TestSearchZeroAllocs|TestSearchIntoZeroAllocs' . && go test -race ./...
+        run: go test -race -v -run='TestNEONKernelParity|TestRecall10K|TestSearchZeroAllocs|TestSearchIntoZeroAllocs' . ./internal/simd && go test -race ./...
 
       - name: Test PureGo + Race
         run: go test -tags purego -race ./...
 
       - name: Benchmark NEON vs PureGo
-        run: go test -run=^$ -bench=BenchmarkDistanceNEONVsFallback -benchmem -benchtime=100ms .
+        run: go test -run=^$ -bench=BenchmarkDistanceNEONVsFallback -benchmem -benchtime=100ms ./internal/simd
 
   cross-build:
     name: Cross-Platform Build (${{ matrix.goos }}/${{ matrix.goarch }})
