@@ -8,21 +8,22 @@ import (
 )
 
 type config struct {
-	m              int
-	mmax           int
-	mmaxSet        bool
-	efConstruction int
-	efSearch       int
-	efSearchSet    bool
-	metric         Metric
-	metricSet      bool
-	customDist     DistanceFunc
-	customDistSet  bool
-	quant          Quantization
-	quantSet       bool
-	seed           int64
-	hasSeed        bool
-	heuristic      bool
+	m               int
+	mmax            int
+	mmaxSet         bool
+	efConstruction  int
+	efSearch        int
+	efSearchSet     bool
+	metric          Metric
+	metricSet       bool
+	customDist      DistanceFunc
+	customDistSet   bool
+	quant           Quantization
+	quantSet        bool
+	seed            int64
+	hasSeed         bool
+	heuristic       bool
+	initialCapacity int
 }
 
 func newDefaultConfig() config {
@@ -62,6 +63,9 @@ func (c *config) validate() error {
 	}
 	if c.quant > QuantFloat16 {
 		return fmt.Errorf("%w: unknown quantization %d", ErrInvalidConfig, c.quant)
+	}
+	if c.initialCapacity < 0 || c.initialCapacity > maxArenaCapacity {
+		return fmt.Errorf("%w: initial capacity must be in [0, %d]", ErrInvalidConfig, maxArenaCapacity)
 	}
 	return nil
 }
@@ -174,7 +178,8 @@ func WithHeuristic(enabled bool) Option {
 
 // WithQuantization selects the vector storage encoding ([QuantNone] or [QuantFloat16]).
 // The default is [QuantNone] (full float32). [QuantFloat16] halves vector memory and
-// memory bandwidth using IEEE-754 binary16 storage (AVX2+F16C+FMA accelerated on amd64).
+// memory bandwidth using IEEE-754 binary16 storage (AVX2+F16C+FMA accelerated on amd64,
+// NEON FCVTL accelerated on arm64).
 func WithQuantization(q Quantization) Option {
 	return func(c *config) error {
 		if q > QuantFloat16 {
@@ -182,6 +187,19 @@ func WithQuantization(q Quantization) Option {
 		}
 		c.quant = q
 		c.quantSet = true
+		return nil
+	}
+}
+
+// WithInitialCapacity pre-allocates the key lookup map and contiguous arena chunks
+// for at least n vectors during [New], avoiding map rehashing and slab allocation
+// pauses during bulk startup ingestion. Must be >= 0; defaults to 0 (lazy growth).
+func WithInitialCapacity(n int) Option {
+	return func(c *config) error {
+		if n < 0 || n > maxArenaCapacity {
+			return fmt.Errorf("%w: initial capacity must be in [0, %d]", ErrInvalidConfig, maxArenaCapacity)
+		}
+		c.initialCapacity = n
 		return nil
 	}
 }

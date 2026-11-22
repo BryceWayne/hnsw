@@ -39,6 +39,17 @@ func (idx *Index[K]) SearchFilter(query []float32, k int, filter func(id K) bool
 	return idx.searchCore(query, k, filter, nil, opts...)
 }
 
+// SearchFilterInto executes [Index.SearchFilter] and writes up to k matching results into dst[:0],
+// reusing dst's backing array when cap(dst) >= result count to achieve zero heap allocations in
+// steady state. If dst is nil or too small, SearchFilterInto allocates a new slice.
+// If filter is nil, SearchFilterInto behaves identically to [Index.SearchInto].
+// Callers must not mutate the index inside filter.
+//
+// Returns the same validation and cancellation errors as [Index.Search].
+func (idx *Index[K]) SearchFilterInto(query []float32, k int, filter func(id K) bool, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error) {
+	return idx.searchCore(query, k, filter, dst, opts...)
+}
+
 func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error) {
 	ef := int(idx.efSearch.Load())
 	var ctx context.Context

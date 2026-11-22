@@ -781,3 +781,129 @@ func BenchmarkContains(b *testing.B) {
 		}
 	})
 }
+
+func TestWithInitialCapacity(t *testing.T) {
+	if _, err := New[int](8, WithInitialCapacity(-1)); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("WithInitialCapacity(-1) err = %v, want ErrInvalidConfig", err)
+	}
+	if _, err := New[int](8, WithInitialCapacity(maxArenaCapacity+1)); !errors.Is(err, ErrInvalidConfig) {
+		t.Fatalf("WithInitialCapacity(>max) err = %v, want ErrInvalidConfig", err)
+	}
+
+	idx, err := New[int](8, WithInitialCapacity(600), WithQuantization(QuantFloat16), WithMetric(MetricCosine), WithSeed(7))
+	if err != nil {
+		t.Fatalf("New with initial capacity failed: %v", err)
+	}
+	st := idx.Stats()
+	if st.Len != 0 {
+		t.Fatalf("Len = %d, want 0", st.Len)
+	}
+	// 600 rounds up to 3 chunks * 256 = 768 slots.
+	if st.Capacity != 768 {
+		t.Fatalf("Capacity = %d, want 768", st.Capacity)
+	}
+	if st.MemoryBytes <= 0 {
+		t.Fatalf("MemoryBytes = %d, want > 0", st.MemoryBytes)
+	}
+
+	for i := 0; i < 600; i++ {
+		if err := idx.Insert(i, []float32{float32(i + 1), 1, 0, 0, 0, 0, 0, 0}); err != nil {
+			t.Fatalf("Insert(%d) failed: %v", i, err)
+		}
+	}
+	stAfter := idx.Stats()
+	if stAfter.Len != 600 || stAfter.Capacity != 768 {
+		t.Fatalf("after 600 inserts: Len=%d Capacity=%d, want 600/768", stAfter.Len, stAfter.Capacity)
+	}
+}
+
+func TestSearchFilterIntoZeroAllocs(t *testing.T) {
+	if raceDetectorEnabled {
+		t.Skip("allocation count disabled under -race")
+	}
+
+	idx, err := New[int](16, WithM(8), WithMmax(16), WithEfConstruction(64), WithEfSearch(32), WithSeed(42))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rng := rand.New(rand.NewSource(42))
+	for i := 0; i < 500; i++ {
+		v := make([]float32, 16)
+		for j := range v {
+			v[j] = rng.Float32()
+		}
+		if err := idx.Insert(i, v); err != nil {
+			t.Fatal(err)
+		}
+	}
+	query := make([]float32, 16)
+	for j := range query {
+		query[j] = rng.Float32()
+	}
+
+	filter := func(id int) bool { return id%2 == 0 }
+	want, err := idx.SearchFilter(query, 10, filter)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dst := make([]SearchResult[int], 0, 10)
+	got, err := idx.SearchFilterInto(query, 10, filter, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("len(got)=%d != len(want)=%d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got[%d]=%+v != want[%d]=%+v", i, got[i], i, want[i])
+		}
+	}
+
+	// Empty index path with pre-allocated dst.
+	emptyIdx, _ := New[int](16)
+	emptyRes, err := emptyIdx.SearchFilterInto(query, 5, filter, dst)
+	if err != nil || len(emptyRes) != 0 {
+		t.Fatalf("empty SearchFilterInto = (%v, %v), want empty/nil", emptyRes, err)
+	}
+
+	// Steady-state 0 allocs/op verification.
+	allocs := testing.AllocsPerRun(200, func() {
+		res, err := idx.SearchFilterInto(query, 10, filter, dst)
+		if err != nil || len(res) != 10 {
+			t.Fatalf("SearchFilterInto failed: len=%d err=%v", len(res), err)
+		}
+	})
+	if allocs != 0 {
+		t.Fatalf("SearchFilterInto allocs/op = %.1f, want 0", allocs)
+	}
+}
+
+func TestIndexStatsTombstoneRatio(t *testing.T) {
+	if r := (IndexStats{}).TombstoneRatio(); r != 0 {
+		t.Fatalf("empty TombstoneRatio = %v, want 0", r)
+	}
+	idx, err := New[int](4, WithSeed(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		if err := idx.Insert(i, []float32{float32(i), 1, 0, 0}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if r := idx.Stats().TombstoneRatio(); r != 0 {
+		t.Fatalf("before delete TombstoneRatio = %v, want 0", r)
+	}
+	idx.Delete(0)
+	if r := idx.Stats().TombstoneRatio(); math.Abs(r-0.25) > 1e-9 {
+		t.Fatalf("after 1/4 delete TombstoneRatio = %v, want 0.25", r)
+	}
+	if err := idx.Compact(); err != nil {
+		t.Fatal(err)
+	}
+	if r := idx.Stats().TombstoneRatio(); r != 0 {
+		t.Fatalf("after Compact TombstoneRatio = %v, want 0", r)
+	}
+}

@@ -8,6 +8,18 @@ func l2SquaredNEON(a, b *float32, n int) float32
 //go:noescape
 func dotProductNEON(a, b *float32, n int) float32
 
+//go:noescape
+func l2SquaredF16F32NEON(a *uint16, b *float32, n int) float32
+
+//go:noescape
+func dotProductF16F32NEON(a *uint16, b *float32, n int) float32
+
+//go:noescape
+func l2SquaredF16F16NEON(a, b *uint16, n int) float32
+
+//go:noescape
+func dotProductF16F16NEON(a, b *uint16, n int) float32
+
 // L2Squared returns the squared Euclidean distance between a and b using ARM64 NEON.
 func L2Squared(a, b []float32) float32 {
 	n := len(a)
@@ -26,38 +38,38 @@ func DotProduct(a, b []float32) float32 {
 	return dotProductNEON(&a[0], &b[0], n)
 }
 
-// L2SquaredF16F32 returns the squared Euclidean distance between binary16 vector a and float32 vector b.
+// L2SquaredF16F32 returns the squared Euclidean distance between binary16 vector a and float32 vector b using ARM64 NEON.
 func L2SquaredF16F32(a []uint16, b []float32) float32 {
 	n := len(a)
 	if n == 0 || len(b) < n {
 		return 0
 	}
-	return L2SquaredF16F32Go(a, b[:n])
+	return l2SquaredF16F32NEON(&a[0], &b[0], n)
 }
 
-// DotProductF16F32 returns the inner product of binary16 vector a and float32 vector b.
+// DotProductF16F32 returns the inner product of binary16 vector a and float32 vector b using ARM64 NEON.
 func DotProductF16F32(a []uint16, b []float32) float32 {
 	n := len(a)
 	if n == 0 || len(b) < n {
 		return 0
 	}
-	return DotProductF16F32Go(a, b[:n])
+	return dotProductF16F32NEON(&a[0], &b[0], n)
 }
 
-// L2SquaredF16F16 returns the squared Euclidean distance between binary16 vectors a and b.
+// L2SquaredF16F16 returns the squared Euclidean distance between binary16 vectors a and b using ARM64 NEON.
 func L2SquaredF16F16(a, b []uint16) float32 {
 	n := len(a)
 	if n == 0 || len(b) < n {
 		return 0
 	}
-	return L2SquaredF16F16Go(a, b[:n])
+	return l2SquaredF16F16NEON(&a[0], &b[0], n)
 }
 
-// DotProductF16F16 returns the inner product of binary16 vectors a and b.
+// DotProductF16F16 returns the inner product of binary16 vectors a and b using ARM64 NEON.
 func DotProductF16F16(a, b []uint16) float32 {
 	n := len(a)
 	if n == 0 || len(b) < n {
 		return 0
 	}
-	return DotProductF16F16Go(a, b[:n])
+	return dotProductF16F16NEON(&a[0], &b[0], n)
 }

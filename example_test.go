@@ -374,3 +374,53 @@ func ExampleWithQuantization() {
 	// Output:
 	// quant=float16 top=doc1 dist=0.0
 }
+
+func ExampleWithInitialCapacity() {
+	idx, err := hnsw.New[int](4, hnsw.WithInitialCapacity(500), hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	st := idx.Stats()
+	fmt.Printf("len=%d capacity=%d\n", st.Len, st.Capacity)
+	// Output:
+	// len=0 capacity=512
+}
+
+func ExampleIndex_SearchFilterInto() {
+	idx, err := hnsw.New[int](2, hnsw.WithM(8), hnsw.WithEfConstruction(32), hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for id := 1; id <= 4; id++ {
+		_ = idx.Insert(id, []float32{float32(id), 0})
+	}
+
+	// Pre-allocate dst once and reuse it for 0 allocs/op filtered queries.
+	dst := make([]hnsw.SearchResult[int], 0, 2)
+	res, err := idx.SearchFilterInto([]float32{0, 0}, 2, func(id int) bool {
+		return id%2 == 0
+	}, dst)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, r := range res {
+		fmt.Printf("%d %.1f\n", r.ID, r.Distance)
+	}
+	// Output:
+	// 2 2.0
+	// 4 4.0
+}
+
+func ExampleIndexStats_TombstoneRatio() {
+	idx, err := hnsw.New[int](2, hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for i := 0; i < 4; i++ {
+		_ = idx.Insert(i, []float32{float32(i), 0})
+	}
+	idx.Delete(0)
+	fmt.Printf("ratio=%.2f\n", idx.Stats().TombstoneRatio())
+	// Output:
+	// ratio=0.25
+}
