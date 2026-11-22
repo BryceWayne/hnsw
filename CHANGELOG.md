@@ -9,7 +9,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [v0.3.0] - 2026-11-22
 
 ### Added
-- **ARM64 NEON FP16 Assembly Kernels (`linux/arm64`, `darwin/arm64`)**: Hardware `FCVTL`/`FCVTL2` + 4-accumulator `VFMLA` Plan 9 assembly kernels (`l2SquaredF16F32NEON`, `dotProductF16F32NEON`, `l2SquaredF16F16NEON`, `dotProductF16F16NEON`) bringing full FP16 SIMD acceleration to Apple Silicon and AWS Graviton, verified on native `ubuntu-24.04-arm` CI.
+- **ARM64 NEON FP16 Assembly Kernels (`linux/arm64`, `darwin/arm64`)**: Hardware `FCVTL`/`FCVTL2` + 4-accumulator `VFMLA` Plan 9 assembly kernels (`l2SquaredF16F32NEON`, `dotProductF16F32NEON`, `l2SquaredF16F16NEON`, `dotProductF16F16NEON`) delivering **`2.95x–3.40x`** speedup over pure Go on ARM64 hardware (Apple Silicon / AWS Graviton), verified on native `ubuntu-24.04-arm` CI.
 - **`WithInitialCapacity(n int)`**: Pre-allocates the key map and contiguous arena chunks ahead of bulk startup ingestion.
 - **`Index.SearchFilterInto`**: Zero-allocation (`0 B/op, 0 allocs/op`) predicate-filtered search reusing caller-supplied `[]SearchResult[K]` buffers.
 - **`IndexStats.TombstoneRatio()`**: Helper returning `Deleted / (Len + Deleted)` to drive periodic auto-compaction policies.
