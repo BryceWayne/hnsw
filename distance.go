@@ -1,6 +1,10 @@
 package hnsw
 
-import "math"
+import (
+	"math"
+
+	"github.com/BryceWayne/hnsw/internal/simd"
+)
 
 // Metric identifies a built-in distance function used by an Index.
 type Metric uint8
@@ -56,7 +60,7 @@ func Euclidean(a, b []float32) (float32, error) {
 }
 
 func euclideanFast(a, b []float32) float32 {
-	d2 := l2Squared(a, b)
+	d2 := simd.L2Squared(a, b)
 	if d2 < 1e-36 || math.IsInf(float64(d2), 0) {
 		return euclideanFallback64(a, b)
 	}
@@ -91,7 +95,7 @@ func SquaredEuclidean(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
 	}
-	d2 := l2Squared(a, b)
+	d2 := simd.L2Squared(a, b)
 	if d2 <= 0 {
 		return 0, nil
 	}
@@ -108,9 +112,9 @@ func Cosine(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
 	}
-	dotAB := dotProduct(a, b)
-	normSqA := dotProduct(a, a)
-	normSqB := dotProduct(b, b)
+	dotAB := simd.DotProduct(a, b)
+	normSqA := simd.DotProduct(a, a)
+	normSqB := simd.DotProduct(b, b)
 	if normSqA < 1e-36 || normSqB < 1e-36 ||
 		math.IsInf(float64(normSqA), 0) || math.IsInf(float64(normSqB), 0) ||
 		dotAB != dotAB || math.IsInf(float64(dotAB), 0) {
@@ -133,7 +137,7 @@ func DotProduct(a, b []float32) (float32, error) {
 	if err := validateVectorPair(a, b); err != nil {
 		return 0, err
 	}
-	return dotProduct(a, b), nil
+	return simd.DotProduct(a, b), nil
 }
 
 func validateVectorFinite(v []float32) error {
@@ -192,7 +196,7 @@ func cosineFallback64(a, b []float32) float32 {
 }
 
 func computeInvNorm(v []float32) float32 {
-	normSq := dotProduct(v, v)
+	normSq := simd.DotProduct(v, v)
 	if normSq > 0 && !math.IsInf(float64(normSq), 0) {
 		return float32(1.0 / math.Sqrt(float64(normSq)))
 	}
@@ -215,70 +219,9 @@ func cosineWithInvNorms(a, b []float32, invA, invB float32) float32 {
 		invA > 1e15 || invB > 1e15 || invA < 1e-15 || invB < 1e-15 {
 		return cosineFallback64(a, b)
 	}
-	dot := dotProduct(a, b)
+	dot := simd.DotProduct(a, b)
 	if dot != dot || math.IsInf(float64(dot), 0) {
 		return cosineFallback64(a, b)
 	}
 	return clampCosine(float32(1.0) - dot*invA*invB)
-}
-
-func l2SquaredGo(a, b []float32) float32 {
-	n := len(a)
-	if n == 0 {
-		return 0
-	}
-	_ = a[n-1]
-	_ = b[n-1]
-	b = b[:n]
-
-	var s0, s1, s2, s3 float32
-	i := 0
-	for ; i+7 < n; i += 8 {
-		a8 := a[i : i+8 : i+8]
-		b8 := b[i : i+8 : i+8]
-		d0 := a8[0] - b8[0]
-		d1 := a8[1] - b8[1]
-		d2 := a8[2] - b8[2]
-		d3 := a8[3] - b8[3]
-		d4 := a8[4] - b8[4]
-		d5 := a8[5] - b8[5]
-		d6 := a8[6] - b8[6]
-		d7 := a8[7] - b8[7]
-		s0 += d0*d0 + d4*d4
-		s1 += d1*d1 + d5*d5
-		s2 += d2*d2 + d6*d6
-		s3 += d3*d3 + d7*d7
-	}
-	sum := (s0 + s1) + (s2 + s3)
-	for ; i < n; i++ {
-		d := a[i] - b[i]
-		sum += d * d
-	}
-	return sum
-}
-
-func dotProductGo(a, b []float32) float32 {
-	n := len(a)
-	if n == 0 {
-		return 0
-	}
-	_ = a[n-1]
-	_ = b[n-1]
-	b = b[:n]
-
-	var s0, s1, s2, s3 float32
-	i := 0
-	for ; i+7 < n; i += 8 {
-		a8 := a[i : i+8 : i+8]
-		b8 := b[i : i+8 : i+8]
-		s0 += a8[0]*b8[0] + a8[4]*b8[4]
-		s1 += a8[1]*b8[1] + a8[5]*b8[5]
-		s2 += a8[2]*b8[2] + a8[6]*b8[6]
-		s3 += a8[3]*b8[3] + a8[7]*b8[7]
-	}
-	sum := (s0 + s1) + (s2 + s3)
-	for ; i < n; i++ {
-		sum += a[i] * b[i]
-	}
-	return sum
 }

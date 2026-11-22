@@ -8,6 +8,8 @@ import (
 	"math"
 	"math/rand"
 	"testing"
+
+	"github.com/BryceWayne/hnsw/internal/simd"
 )
 
 func TestFloat16EncodingAndDecoding(t *testing.T) {
@@ -24,11 +26,11 @@ func TestFloat16EncodingAndDecoding(t *testing.T) {
 	// Exact round-trip for integers, powers of two, subnormals, signed zero, and saturation.
 	exactVals := []float32{0, 1, -1, 0.5, -0.5, 2, 1024, 65504, -65504, 1.5, 0.25, 0.125}
 	for _, v := range exactVals {
-		h := float32ToFloat16Finite(v)
-		if !isFloat16Finite(h) {
-			t.Fatalf("float32ToFloat16Finite(%v) = 0x%04x (non-finite)", v, h)
+		h := simd.Float32ToFloat16Finite(v)
+		if !simd.IsFloat16Finite(h) {
+			t.Fatalf("Float32ToFloat16Finite(%v) = 0x%04x (non-finite)", v, h)
 		}
-		got := f16ToF32Table[h]
+		got := simd.F16ToF32Table[h]
 		if got != v {
 			t.Fatalf("roundtrip(%v) = %v (bits=0x%04x)", v, got, h)
 		}
@@ -36,11 +38,11 @@ func TestFloat16EncodingAndDecoding(t *testing.T) {
 
 	// Saturation of large finite float32s (> 65504) must stay finite (±65504).
 	for _, v := range []float32{70000, 1e20, math.MaxFloat32, -70000, -1e20, -math.MaxFloat32} {
-		h := float32ToFloat16Finite(v)
-		if !isFloat16Finite(h) {
+		h := simd.Float32ToFloat16Finite(v)
+		if !simd.IsFloat16Finite(h) {
 			t.Fatalf("expected finite saturation for %v, got 0x%04x", v, h)
 		}
-		got := f16ToF32Table[h]
+		got := simd.F16ToF32Table[h]
 		want := float32(65504)
 		if v < 0 {
 			want = -65504
@@ -52,21 +54,21 @@ func TestFloat16EncodingAndDecoding(t *testing.T) {
 
 	// Tiny subnormal / underflow handling.
 	for _, v := range []float32{1e-6, -1e-6, 1e-10, 1e-30} {
-		h := float32ToFloat16Finite(v)
-		if !isFloat16Finite(h) {
+		h := simd.Float32ToFloat16Finite(v)
+		if !simd.IsFloat16Finite(h) {
 			t.Fatalf("tiny %v produced non-finite 0x%04x", v, h)
 		}
 	}
 
 	// Special binary16 bit patterns: +Inf, -Inf, NaN, subnormal.
-	if isFloat16Finite(0x7C00) || isFloat16Finite(0xFC00) || isFloat16Finite(0x7E00) {
-		t.Fatal("expected Inf/NaN binary16 patterns to fail isFloat16Finite")
+	if simd.IsFloat16Finite(0x7C00) || simd.IsFloat16Finite(0xFC00) || simd.IsFloat16Finite(0x7E00) {
+		t.Fatal("expected Inf/NaN binary16 patterns to fail IsFloat16Finite")
 	}
-	if !math.IsInf(float64(f16ToF32Table[0x7C00]), 1) {
-		t.Fatalf("0x7C00 decoded to %v, want +Inf", f16ToF32Table[0x7C00])
+	if !math.IsInf(float64(simd.F16ToF32Table[0x7C00]), 1) {
+		t.Fatalf("0x7C00 decoded to %v, want +Inf", simd.F16ToF32Table[0x7C00])
 	}
-	if !math.IsNaN(float64(f16ToF32Table[0x7E00])) {
-		t.Fatalf("0x7E00 decoded to %v, want NaN", f16ToF32Table[0x7E00])
+	if !math.IsNaN(float64(simd.F16ToF32Table[0x7E00])) {
+		t.Fatalf("0x7E00 decoded to %v, want NaN", simd.F16ToF32Table[0x7E00])
 	}
 }
 
@@ -393,10 +395,10 @@ func TestQuantFloat16FullLifecycleAndPersistence(t *testing.T) {
 
 func TestFloat16EdgeCases(t *testing.T) {
 	// Empty slice guards.
-	if l2SquaredF16F32Go(nil, nil) != 0 || dotProductF16F32Go(nil, nil) != 0 ||
-		l2SquaredF16F16Go(nil, nil) != 0 || dotProductF16F16Go(nil, nil) != 0 ||
-		l2SquaredF16F32(nil, nil) != 0 || dotProductF16F32(nil, nil) != 0 ||
-		l2SquaredF16F16(nil, nil) != 0 || dotProductF16F16(nil, nil) != 0 {
+	if simd.L2SquaredF16F32Go(nil, nil) != 0 || simd.DotProductF16F32Go(nil, nil) != 0 ||
+		simd.L2SquaredF16F16Go(nil, nil) != 0 || simd.DotProductF16F16Go(nil, nil) != 0 ||
+		simd.L2SquaredF16F32(nil, nil) != 0 || simd.DotProductF16F32(nil, nil) != 0 ||
+		simd.L2SquaredF16F16(nil, nil) != 0 || simd.DotProductF16F16(nil, nil) != 0 {
 		t.Fatal("expected 0 for empty F16 slices")
 	}
 

@@ -1,6 +1,6 @@
 //go:build amd64 && !purego && unix
 
-package hnsw
+package simd
 
 import (
 	"math"
@@ -52,13 +52,13 @@ func TestAVX2GuardPageBounds(t *testing.T) {
 		}
 
 		gotL2 := l2SquaredAVX2(&a[0], &b[0], dim)
-		wantL2 := l2SquaredGo(a, b)
+		wantL2 := L2SquaredGo(a, b)
 		if math.Abs(float64(gotL2-wantL2)) > 1e-3*math.Max(1, float64(wantL2)) {
 			t.Fatalf("guard page dim=%d l2SquaredAVX2=%v, go=%v", dim, gotL2, wantL2)
 		}
 
 		gotDot := dotProductAVX2(&a[0], &b[0], dim)
-		wantDot := dotProductGo(a, b)
+		wantDot := DotProductGo(a, b)
 		if math.Abs(float64(gotDot-wantDot)) > 1e-3*math.Max(1, math.Abs(float64(wantDot))) {
 			t.Fatalf("guard page dim=%d dotProductAVX2=%v, go=%v", dim, gotDot, wantDot)
 		}

@@ -405,25 +405,29 @@ All measurements below were collected directly from this codebase (`go1.23.3 lin
 
 ```text
 hnsw/
-├── .github/workflows/go.yml   # CI: gofmt, go vet, -race, purego, cross-builds, lint, govulncheck
+├── .github/
+│   ├── CODEOWNERS             # Maintainer approval rules for protected root branch
+│   ├── ISSUE_TEMPLATE/        # Bug report and feature request templates
+│   ├── pull_request_template.md
+│   └── workflows/go.yml       # CI: gofmt, vet, -race (x86_64 + ARM64), purego, fuzz, cross-builds, lint, govulncheck
 ├── docs/images/               # HNSW visual diagrams
 ├── examples/main.go           # Standalone CLI demo
+├── internal/simd/             # amd64 AVX2+FMA+F16C, arm64 NEON, and pure-Go distance/FP16 kernels
 ├── batch.go                   # InsertBatch, SearchBatch, DeleteBatch
-├── benchmark_recall_test.go   # Recall@K, SearchFilter, and Persistence benchmarks
-├── distance.go                # Public distance helpers, Metric, and Go fallbacks
-├── distance_amd64.go          # amd64 AVX2+FMA CPUID dispatch & asm declarations
-├── distance_amd64.s           # amd64 AVX2+FMA Plan 9 assembly kernels
-├── distance_purego.go         # Pure-Go distance bindings (!amd64 || purego)
+├── distance.go                # Public Metric, DistanceFunc, and standalone distance helpers
 ├── doc.go                     # Package-level GoDoc overview
 ├── errors.go                  # Structured sentinel errors
-├── example_test.go            # Runnable GoDoc Example tests
-├── heap.go                    # Value-typed min/max binary heaps
-├── hnsw.go                    # Index[K], flat chunked arena, Algorithm 4, Delete, Compact
+├── heap.go                    # Hole-sifting value-typed min/max binary heaps
+├── hnsw.go                    # Index[K], flat chunked arena, Algorithm 4, Delete, Compact, Keys, All
 ├── options.go                 # Functional Option and SearchOption types
-├── scratch.go                 # Pooled epoch-stamped SearchScratch
-├── search.go                  # Search, SearchFilter, beam search
-├── serialize.go               # Versioned CRC32 binary WriteTo/ReadFrom/SaveFile/LoadFile
-├── *_test.go                  # Unit, concurrency (-race), SIMD parity, recall, and benchmarks
+├── quantization.go            # Quantization (QuantNone, QuantFloat16) and FP16 metric helpers
+├── scratch.go                 # Pooled epoch-stamped searchScratch
+├── search.go                  # Search, SearchInto, SearchFilter, WithMaxDistance
+├── serialize.go               # Versioned (v1/v2) CRC32 binary WriteTo/ReadFrom/SaveFile/LoadFile
+├── *_test.go                  # Unit, fuzz (FuzzReadFrom), concurrency (-race), recall, examples, and benchmarks
+├── CHANGELOG.md               # Release history
+├── CONTRIBUTING.md            # Contribution and verification guide
+├── SECURITY.md                # Security policy and bounded-deserialization notes
 ├── .editorconfig              # Editor formatting rules
 ├── .golangci.yml              # golangci-lint v2 configuration
 ├── go.mod / go.sum            # Minimal module definition (golang.org/x/sys only)
