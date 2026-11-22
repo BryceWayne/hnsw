@@ -6,10 +6,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.2.1] - 2026-11-22
+
 ### Changed
-- Moved architecture-specific SIMD and FP16 distance kernels into `internal/simd` for a cleaner root module layout (100% backwards-compatible).
-- Organized test files by topic (`quantization_test.go`, `edge_cases_test.go`).
-- Added `CHANGELOG.md` and GitHub issue/PR templates.
+- Moved architecture-specific SIMD and FP16 distance kernels into `internal/simd` for a cleaner root module layout (100% backwards-compatible) (#21).
+- Organized test files by topic (`quantization_test.go`, `edge_cases_test.go`) (#21).
+- Overhauled all six `README.md` `Algorithm Overview` SVG diagrams (`hnsw.svg`, `search-process.svg`, `insertion-process.svg`, `pruning-process.svg`, `deletion-process.svg`, `ef-impact.svg`) with unified `hnsw` Go branding and WCAG AA light/dark theme contrast (#22).
+
+### Added
+- Added `CHANGELOG.md` and GitHub issue/PR templates (#21).
 
 ## [v0.2.0] - 2026-11-21
 
