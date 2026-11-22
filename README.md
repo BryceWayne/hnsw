@@ -8,7 +8,58 @@
 
 **`hnsw`** is a concurrency-safe, zero-allocation-hot-path, **embeddable Go vector database library** implementing Hierarchical Navigable Small World (HNSW) approximate nearest neighbor (ANN) search.
 
-Designed strictly as an embeddable Go package with minimal dependencies (`golang.org/x/sys` only for runtime CPUID feature detection), `hnsw` combines a flat contiguous `float32` memory arena, `amd64` AVX2+FMA Plan 9 assembly distance kernels, Algorithm 4 diversity-aware graph construction, and streaming CRC32-checksummed binary persistence.
+Designed strictly as an embeddable Go package with minimal dependencies (`golang.org/x/sys` only for runtime CPUID feature detection), `hnsw` combines a flat contiguous memory arena (`float32` or `QuantFloat16`), `amd64` AVX2+FMA+F16C and `arm64` NEON (f32 + FP16) Plan 9 assembly distance kernels, Algorithm 4 diversity-aware graph construction, and streaming CRC32-checksummed binary persistence.
+
+---
+
+## Why `hnsw`? Comparison with Go Alternatives
+
+| Capability | **`BryceWayne/hnsw`** | `coder/hnsw` (`v0.6.1`) | `fogfish/hnsw` (`v0.0.5`) | `hnswlib` (CGO) |
+|---|---|---|---|---|
+| **Zero CGO / Single Binary** | Yes (Plan 9 asm + pure Go) | Yes | Yes | No (C++ toolchain) |
+| **SIMD Acceleration** | **AVX2+FMA+F16C (`amd64`) + NEON f32/FP16 (`arm64`)** | `amd64` via `vek` | Pure Go | AVX2 / AVX-512 / NEON |
+| **Built-in Read/Write Concurrency** | **Yes** (64-stripe RWMutex + 4096 node locks) | No (external lock) | No (external lock) | Partial (fixed max size) |
+| **Zero-Alloc Search Hot Path** | **Yes (`SearchInto`, `SearchFilterInto`: `0 B/op, 0 allocs/op`)** | No (~220 allocs/op) | No (~10 allocs/op) | C++ heap / CGO overhead |
+| **FP16 Quantization (2× Lower RAM)** | **Yes (`QuantFloat16`)** | No | No | No (external) |
+| **Algorithm 4 Diversity Pruning** | **Yes (default)** | No | Simplified | Yes |
+| **In-Traversal Predicate Filter & Cutoff** | **Yes (`SearchFilter`, `SearchFilterInto`, `WithMaxDistance`)** | No | No | Callback |
+| **Context Cancellation (`WithContext`)** | **Yes** | No | No | No |
+| **Delete + 2-Hop Repair + `Compact()`** | **Yes** | Delete only | No | Mark-deleted only |
+| **Generic Keys** | **Any `comparable` (`int`, `string`, `[16]byte`, structs)** | `cmp.Ordered` | `any` (`Surface`) | `uint64` labels |
+| **Streaming CRC32 Persistence** | **Yes (`WriteTo`/`ReadFrom`, atomic `SaveFile`)** | `Export`/`Import` | `Write`/`Read` | File only |
+| **Direct Dependencies** | **`1` (`golang.org/x/sys`)** | `6+` | `4+` | C++ runtime |
+
+### Head-to-Head Go Benchmarks (`benchmarks/`)
+
+Measured in the isolated [`benchmarks/`](./benchmarks) sub-module (`go1.23.3 linux/amd64`, **Intel Core i9-12900K**, 12 CPUs, Cosine distance, `M=16`, `EfConstruction=200`, `EfSearch=64`, `k=10`, dimension-invariant clustered embeddings). Run `cd benchmarks && go test -run=^$ -bench=. -benchmem .` to reproduce.
+
+| Dataset & Mode | Engine | Throughput | 1T p50 / p99 | `Recall@10` | `allocs/op` |
+|---|---|---|---|---|---|
+| **`10K × dim=128`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`289,436 q/s`** | `31.3 / 42.5 µs` | **`0.999`** | **`0`** |
+| `10K × dim=128` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`268,601 q/s`** | `31.7 / 44.7 µs` | **`1.000`** | **`0`** |
+| `10K × dim=128` (12T) | `fogfish/hnsw` | `132,031 q/s` | `49.9 / 199.0 µs` | `0.876` | `10` |
+| `10K × dim=128` (12T) | `coder/hnsw` | `269,978 q/s` | `20.2 / 63.5 µs` | `0.167*` | `223` |
+| **`10K × dim=768`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`118,147 q/s`** | `76.7 / 115.7 µs` | **`0.999`** | **`0`** |
+| `10K × dim=768` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`60,350 q/s`** | `123.9 / 250.3 µs` | **`1.000`** | **`0`** |
+| `10K × dim=768` (12T) | `fogfish/hnsw` | `54,511 q/s` | `215.4 / 685.6 µs` | `0.315` | `10` |
+| `10K × dim=768` (12T) | `coder/hnsw` | `247,402 q/s` | `27.4 / 110.7 µs` | `0.130*` | `221` |
+| **`5K × dim=1536`** (12T) | **`BryceWayne/hnsw` (FP16, `SearchInto`)** | **`77,328 q/s`** | `111.3 / 247.5 µs` | **`1.000`** | **`0`** |
+| `5K × dim=1536` (12T) | **`BryceWayne/hnsw` (F32, `SearchInto`)** | **`36,731 q/s`** | `224.0 / 410.3 µs` | **`1.000`** | **`0`** |
+| `5K × dim=1536` (12T) | `fogfish/hnsw` | `24,473 q/s` | `453.6 / 1,168 µs` | `0.318` | `10` |
+| `5K × dim=1536` (12T) | `coder/hnsw` | `231,965 q/s` | `31.6 / 61.9 µs` | `0.214*` | `208` |
+| **Mixed 80% R / 20% W** (12T, `5K×128`) | **`BryceWayne/hnsw` (native locks)** | **`90,277 ops/s`** | — | — | **`0`** |
+| Mixed 80% R / 20% W (12T, `5K×128`) | `coder/hnsw` (`sync.RWMutex`) | `39,403 ops/s` | — | — | `231` |
+| Mixed 80% R / 20% W (12T, `5K×128`) | `fogfish/hnsw` (`sync.RWMutex`) | `9,166 ops/s` | — | — | `39` |
+| **Build + Owned Heap** (`5K×768`) | **`BryceWayne/hnsw` (FP16, `InsertBatch`)** | **`13,441 vecs/s` (`372 ms`)** | — | **`9.15 MB` RAM** | — |
+| Build + Owned Heap (`5K×768`) | `coder/hnsw` (`Add`) | `14,142 vecs/s` (`354 ms`) | — | `19.83 MB` RAM | — |
+| Build + Owned Heap (`5K×768`) | `fogfish/hnsw` (`Insert`) | `1,567 vecs/s` (`3,191 ms`) | — | `15.73 MB` RAM | — |
+
+*\*`coder/hnsw v0.6.1` terminates layer-0 beam search early whenever a popped candidate fails to beat `result.Min().dist` (causing low recall on clustered embeddings despite fast traversal). All libraries were configured with their documented defaults and identical `M=16`, `EfConstruction=200`, `EfSearch=64`.*
+
+### When to Use `hnsw` (and When Not To)
+
+- **Great fit**: Embedded in-process vector search in Go services, RAG APIs, LLM semantic caches, recommendation/deduplication microservices, and single-binary CLI/edge apps holding **10K–5M vectors** in RAM (with `QuantFloat16`, 1M × 768-dim vectors take ~1.7 GB) where **sub-millisecond p99**, **zero CGO**, and **zero GC pressure** matter.
+- **Not the right tool**: If you need distributed multi-node sharding, billion-scale disk-backed indexes (`mmap`/DiskANN), or a full SQL/metadata query engine, use a dedicated server such as Qdrant, Milvus, Weaviate, or `pgvector`.
 
 ---
 
@@ -16,8 +67,8 @@ Designed strictly as an embeddable Go package with minimal dependencies (`golang
 
 - **Generic Embeddable API (`Index[K comparable]`)**: Type-safe keys (`int`, `uint64`, `string`, `[16]byte`, or any `comparable` struct) with validated `Option` configuration and structured sentinel errors.
 - **Flat Chunked Memory Arena**: Vectors and layer-0 adjacency lists live in 256-slot contiguous `arenaChunk` slabs indexed by dense `uint32` internal IDs, maximizing cache locality and minimizing GC pressure.
-- **Zero-Allocation Hot-Path Search**: `sync.Pool`-backed `searchScratch` with epoch-stamped `[]uint32` visited tables and hole-sifting value-typed heaps reduces steady-state `Search` to **1 allocation/op** (result slice only) and `SearchInto` to **0 B/op, 0 allocs/op**.
-- **Cross-Platform SIMD Acceleration & FP16 Quantization**: Multi-accumulator AVX2+FMA+F16C Plan 9 assembly (`amd64`) and 4-accumulator NEON Plan 9 assembly (`arm64` — Apple Silicon / AWS Graviton) accelerate distance kernels (~3–8x faster than scalar Go), while optional `WithQuantization(QuantFloat16)` halves vector RAM & file size and speeds up `dim=1536` search by **1.75x**. Other architectures and `-tags purego` builds use portable pure-Go fallbacks.
+- **Zero-Allocation Hot-Path Search**: `sync.Pool`-backed `searchScratch` with epoch-stamped `[]uint32` visited tables and hole-sifting value-typed heaps reduces steady-state `Search` to **1 allocation/op** (result slice only) and `SearchInto` / `SearchFilterInto` to **0 B/op, 0 allocs/op**.
+- **Cross-Platform SIMD Acceleration & FP16 Quantization**: Multi-accumulator AVX2+FMA+F16C Plan 9 assembly (`amd64`) and 4-accumulator NEON f32 + FP16 (`FCVTL`/`FCVTL2`) Plan 9 assembly (`arm64` — Apple Silicon / AWS Graviton) accelerate distance kernels (~3–8x faster than scalar Go), while optional `WithQuantization(QuantFloat16)` halves vector RAM & file size and speeds up `dim=1536` search by **~2x**. Other architectures and `-tags purego` builds use portable pure-Go fallbacks.
 - **Concurrency-Safe CRUD & Bounded Batching**: Striped `[4096]sync.RWMutex` per-node locks, atomic entry-point state, atomic key upserts (`Insert`), tombstoned deletion + 2-hop repair (`Delete`, `DeleteBatch`), arena reclamation (`Compact`), and bounded worker pools (`InsertBatch`, `SearchBatch`).
 - **HNSW Algorithm 4 & Flexible Search**: Diversity-aware neighbor selection (`WithHeuristic`), `mL = 1 / ln(M)` level sampling, lossless `Get` on `MetricCosine` (inverse norms stored separately), predicate filtering (`SearchFilter`), per-query `WithSearchEf`, and `context.Context` cancellation (`WithContext`).
 - **Streaming Binary Persistence**: Versioned, CRC32-checksummed, tombstone-free binary format via `WriteTo(io.Writer)` / `ReadFrom(io.Reader)` and atomic `SaveFile` / `LoadFile`.
@@ -205,11 +256,22 @@ customIdx, err := hnsw.New[string](128, hnsw.WithCustomDistance(l1))
 
 ---
 
-## Running the Example Demo
+## Production Blueprints & Examples
 
-A runnable demonstration program lives in [`examples/main.go`](./examples/main.go):
+| Example | Path | What It Shows |
+|---|---|---|
+| **RAG HTTP Microservice** | [`examples/rag-server`](./examples/rag-server) | Zero-dependency Go 1.23 `net/http` server with multi-tenant `SearchFilterInto` + `sync.Pool`, `WithContext` deadlines, `WithMaxDistance` cutoffs, background compaction via `TombstoneRatio()`, `/stats`, and graceful `SIGTERM` `SaveFile`/`LoadFile`. |
+| **LLM Semantic Cache** | [`examples/semantic-cache`](./examples/semantic-cache) | `MetricCosine` + `QuantFloat16` + `WithMaxDistance(0.08)` prompt similarity cache with TTL eviction (`DeleteBatch` + `Compact`). |
+| **CLI Benchmark Demo** | [`examples/main.go`](./examples/main.go) | Standalone flag-driven build, search, filter, compact, and persistence smoke test. |
 
 ```bash
+# Run the production-style RAG HTTP microservice
+go run ./examples/rag-server -addr :8080 -dim 4 -data /tmp/rag.hnsw
+
+# Run the LLM semantic cache blueprint
+go run ./examples/semantic-cache
+
+# Run the CLI demo
 go run ./examples \
   -d 128 \
   -n 5000 \
@@ -253,12 +315,13 @@ go run ./examples \
 | `WithSeed(seed int64)` | time-seeded | PRNG seed for deterministic HNSW level assignment |
 | `WithHeuristic(enabled bool)` | `true` | Enable Algorithm 4 diversity-aware neighbor pruning |
 | `WithQuantization(q Quantization)` | `QuantNone` | Vector storage encoding (`QuantNone` float32 or `QuantFloat16` binary16 for 2x lower RAM & faster high-dim search) |
+| `WithInitialCapacity(n int)` | `0` (lazy) | Pre-allocate key map and contiguous arena chunks for at least `n` vectors ahead of bulk ingestion |
 
 ### Per-Call Search & Batch Options (`SearchOption`)
 
 | Option | Description |
 |---|---|
-| `WithSearchEf(ef int)` | Override `EfSearch` for a single `Search`, `SearchInto`, `SearchFilter`, or `SearchBatch` call |
+| `WithSearchEf(ef int)` | Override `EfSearch` for a single `Search`, `SearchInto`, `SearchFilter`, `SearchFilterInto`, or `SearchBatch` call |
 | `WithMaxDistance(maxDist float32)` | Filter returned results to neighbors with final `Distance <= maxDist` |
 | `WithContext(ctx context.Context)` | Attach cancellation/deadline to search or batch operations |
 | `WithWorkers(n int)` | Set bounded worker pool size for `InsertBatch` / `SearchBatch` (default `GOMAXPROCS`) |
@@ -267,12 +330,12 @@ go run ./examples \
 
 - **Constructors / Loaders**: `New[K](dim int, opts ...Option) (*Index[K], error)`, `ReadFrom[K](r io.Reader, opts ...Option) (*Index[K], error)`, `LoadFile[K](path string, opts ...Option) (*Index[K], error)`
 - **Write / Mutate**: `Insert(id K, vec []float32) error`, `InsertBatch(items []Item[K], opts ...SearchOption) error`, `Delete(id K) bool`, `DeleteBatch(ids []K) int`, `Compact() error`, `Clear()`, `SetEfSearch(ef int) error`
-- **Query / Inspect**: `Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchInto(query []float32, k int, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error)`, `Get(id K) ([]float32, bool)`, `Contains(id K) bool`, `Keys() []K`, `All() iter.Seq2[K, []float32]`, `Len() int`, `Dim() int`, `Stats() IndexStats`
+- **Query / Inspect**: `Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchInto(query []float32, k int, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilterInto(query []float32, k int, filter func(id K) bool, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error)`, `SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error)`, `Get(id K) ([]float32, bool)`, `Contains(id K) bool`, `Keys() []K`, `All() iter.Seq2[K, []float32]`, `Len() int`, `Dim() int`, `Stats() IndexStats`
 - **Persist**: `WriteTo(w io.Writer) (int64, error)`, `SaveFile(path string) error`
 
-### `IndexStats` Fields
+### `IndexStats` Fields & Helpers
 
-`Len`, `Deleted`, `Capacity`, `Dim`, `MaxLevel`, `EntryPointSet`, `M`, `Mmax`, `EfConstruction`, `EfSearch`, `Metric`, `Quantization`, `Heuristic`, `MemoryBytes`.
+`Len`, `Deleted`, `Capacity`, `Dim`, `MaxLevel`, `EntryPointSet`, `M`, `Mmax`, `EfConstruction`, `EfSearch`, `Metric`, `Quantization`, `Heuristic`, `MemoryBytes`, plus `TombstoneRatio() float64` (`Deleted / (Len + Deleted)` for scheduling periodic `Compact()`).
 
 ### Sentinel Errors
 
@@ -414,9 +477,10 @@ hnsw/
 │   ├── ISSUE_TEMPLATE/        # Bug report and feature request templates
 │   ├── pull_request_template.md
 │   └── workflows/go.yml       # CI: gofmt, vet, -race (x86_64 + ARM64), purego, fuzz, cross-builds, lint, govulncheck
+├── benchmarks/                # Isolated Go sub-module for head-to-head Go HNSW benchmarks
 ├── docs/images/               # HNSW visual diagrams
-├── examples/main.go           # Standalone CLI demo
-├── internal/simd/             # amd64 AVX2+FMA+F16C, arm64 NEON, and pure-Go distance/FP16 kernels
+├── examples/                  # CLI demo, production RAG HTTP server, and LLM semantic cache
+├── internal/simd/             # amd64 AVX2+FMA+F16C, arm64 NEON (f32 + FP16), and pure-Go kernels
 ├── batch.go                   # InsertBatch, SearchBatch, DeleteBatch
 ├── distance.go                # Public Metric, DistanceFunc, and standalone distance helpers
 ├── doc.go                     # Package-level GoDoc overview

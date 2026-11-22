@@ -15,20 +15,21 @@ import (
 )
 
 const (
-	chunkBits    = 8
-	chunkSize    = 1 << chunkBits // 256
-	chunkMask    = chunkSize - 1
-	dirL2Bits    = 9
-	dirL2Size    = 1 << dirL2Bits // 512
-	dirL2Mask    = dirL2Size - 1
-	dirL1Size    = 512
-	nodeLockSize = 4096
-	nodeLockMask = nodeLockSize - 1
-	readStripes  = 64
-	readMask     = readStripes - 1
-	maxNodeLevel = 32
-	invalidID    = uint32(math.MaxUint32)
-	emptyEntry   = uint64(math.MaxUint64)
+	chunkBits        = 8
+	chunkSize        = 1 << chunkBits // 256
+	chunkMask        = chunkSize - 1
+	dirL2Bits        = 9
+	dirL2Size        = 1 << dirL2Bits // 512
+	dirL2Mask        = dirL2Size - 1
+	dirL1Size        = 512
+	maxArenaCapacity = dirL1Size * dirL2Size * chunkSize
+	nodeLockSize     = 4096
+	nodeLockMask     = nodeLockSize - 1
+	readStripes      = 64
+	readMask         = readStripes - 1
+	maxNodeLevel     = 32
+	invalidID        = uint32(math.MaxUint32)
+	emptyEntry       = uint64(math.MaxUint64)
 )
 
 type paddedRWMutex struct {
@@ -100,6 +101,18 @@ type IndexStats struct {
 	MemoryBytes int64
 }
 
+// TombstoneRatio returns the fraction of allocated logical slots that are tombstoned
+// (Deleted / (Len + Deleted)), in [0, 1]. Returns 0 when the index has no live or deleted slots.
+// Callers can use this metric to schedule periodic [Index.Compact] calls (for example,
+// when TombstoneRatio() > 0.25).
+func (s IndexStats) TombstoneRatio() float64 {
+	total := s.Len + s.Deleted
+	if total <= 0 {
+		return 0
+	}
+	return float64(s.Deleted) / float64(total)
+}
+
 // Index is a concurrency-safe, generic Hierarchical Navigable Small World (HNSW) vector index.
 type Index[K comparable] struct {
 	dim            int
@@ -168,13 +181,48 @@ func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 		quant:          cfg.quant,
 		heuristic:      cfg.heuristic,
 		seed:           seed,
-		extToInt:       make(map[K]uint32),
+		extToInt:       make(map[K]uint32, cfg.initialCapacity),
 		rng:            rand.New(rand.NewSource(seed)),
 	}
 	idx.efSearch.Store(int64(cfg.efSearch))
 	idx.entryState.Store(emptyEntry)
 	idx.initScratchPool()
+	if cfg.initialCapacity > 0 {
+		idx.preallocateChunks(cfg.initialCapacity)
+	}
 	return idx, nil
+}
+
+func (idx *Index[K]) newArenaChunk() *arenaChunk[K] {
+	chunk := &arenaChunk[K]{
+		intToExt: make([]K, chunkSize),
+		l0Edges:  make([]uint32, chunkSize*idx.mmax),
+	}
+	if idx.quant == QuantFloat16 {
+		chunk.vecsF16 = make([]uint16, chunkSize*idx.dim)
+	} else {
+		chunk.vecs = make([]float32, chunkSize*idx.dim)
+	}
+	if idx.metric == MetricCosine {
+		chunk.invNorms = make([]float32, chunkSize)
+	}
+	return chunk
+}
+
+func (idx *Index[K]) preallocateChunks(n int) {
+	numChunks := (n + chunkSize - 1) / chunkSize
+	for c := 0; c < numChunks; c++ {
+		l1 := c >> dirL2Bits
+		l2 := c & dirL2Mask
+		page := idx.dir[l1].Load()
+		if page == nil {
+			page = &dirPage[K]{}
+			idx.dir[l1].Store(page)
+		}
+		if page.chunks[l2].Load() == nil {
+			page.chunks[l2].Store(idx.newArenaChunk())
+		}
+	}
 }
 
 func (idx *Index[K]) initScratchPool() {
@@ -474,18 +522,7 @@ func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
 	}
 	chunk := page.chunks[l2].Load()
 	if chunk == nil {
-		chunk = &arenaChunk[K]{
-			intToExt: make([]K, chunkSize),
-			l0Edges:  make([]uint32, chunkSize*idx.mmax),
-		}
-		if idx.quant == QuantFloat16 {
-			chunk.vecsF16 = make([]uint16, chunkSize*idx.dim)
-		} else {
-			chunk.vecs = make([]float32, chunkSize*idx.dim)
-		}
-		if idx.metric == MetricCosine {
-			chunk.invNorms = make([]float32, chunkSize)
-		}
+		chunk = idx.newArenaChunk()
 		page.chunks[l2].Store(chunk)
 	}
 
@@ -1501,7 +1538,18 @@ func (idx *Index[K]) Stats() IndexStats {
 	}
 
 	totalSlots := idx.nextID.Load()
-	numChunks := (int(totalSlots) + chunkSize - 1) / chunkSize
+	numChunks := 0
+	for l1 := 0; l1 < dirL1Size; l1++ {
+		page := idx.dir[l1].Load()
+		if page == nil {
+			continue
+		}
+		for l2 := 0; l2 < dirL2Size; l2++ {
+			if page.chunks[l2].Load() != nil {
+				numChunks++
+			}
+		}
+	}
 	capSlots := numChunks * chunkSize
 
 	var memBytes int64

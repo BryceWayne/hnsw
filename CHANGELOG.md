@@ -6,6 +6,20 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+## [v0.3.0] - 2026-11-22
+
+### Added
+- **ARM64 NEON FP16 Assembly Kernels (`linux/arm64`, `darwin/arm64`)**: Hardware `FCVTL`/`FCVTL2` + 4-accumulator `VFMLA` Plan 9 assembly kernels (`l2SquaredF16F32NEON`, `dotProductF16F32NEON`, `l2SquaredF16F16NEON`, `dotProductF16F16NEON`) delivering **`2.95x–3.40x`** speedup over pure Go on ARM64 hardware (Apple Silicon / AWS Graviton), verified on native `ubuntu-24.04-arm` CI.
+- **`WithInitialCapacity(n int)`**: Pre-allocates the key map and contiguous arena chunks ahead of bulk startup ingestion.
+- **`Index.SearchFilterInto`**: Zero-allocation (`0 B/op, 0 allocs/op`) predicate-filtered search reusing caller-supplied `[]SearchResult[K]` buffers.
+- **`IndexStats.TombstoneRatio()`**: Helper returning `Deleted / (Len + Deleted)` to drive periodic auto-compaction policies.
+- **Isolated Head-to-Head Benchmark Suite (`benchmarks/`)**: Reproducible Go sub-module comparing `BryceWayne/hnsw` (F32 & FP16) against `coder/hnsw`, `fogfish/hnsw`, and exact brute-force across Recall@10, QPS, p50/p99 latency, allocs/op, mixed 80/20 concurrent reads/writes, build speed, and total heap usage.
+- **Production Blueprints**: Zero-dependency Go 1.23 RAG HTTP microservice (`examples/rag-server`) and LLM semantic cache (`examples/semantic-cache`).
+
+### Changed
+- Relaxed `go.mod` minimum directive from `go 1.23.3` to `go 1.23.0` for frictionless adoption across all Go 1.23 patch releases.
+- Expanded `README.md` with a Go library comparison matrix, verified head-to-head benchmark table, and "When to Use `hnsw`" architectural guide.
+
 ## [v0.2.1] - 2026-11-22
 
 ### Changed
