@@ -7,14 +7,23 @@ import (
 
 // Search returns up to k approximate nearest neighbors to query ordered by ascending distance.
 // When the index is empty, Search returns an empty non-nil slice and a nil error.
-// The effective beam width is max(efSearch, k) and may be overridden per call with [WithSearchEf]
-// or canceled with [WithContext].
+// The effective beam width is max(efSearch, k) and may be overridden per call with [WithSearchEf],
+// bounded by distance with [WithMaxDistance], or canceled with [WithContext].
 //
 // Returns [ErrInvalidK] if k <= 0, [ErrDimensionMismatch] if len(query) != idx.Dim(),
 // [ErrNaNOrInf] if query contains NaN or ±Inf, [ErrInvalidConfig] for invalid options,
 // or ctx.Err() if canceled.
 func (idx *Index[K]) Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error) {
-	return idx.searchCore(query, k, nil, opts...)
+	return idx.searchCore(query, k, nil, nil, opts...)
+}
+
+// SearchInto executes [Index.Search] and writes up to k results into dst[:0], reusing dst's
+// backing array when cap(dst) >= result count to achieve zero heap allocations in steady state.
+// If dst is nil or too small, SearchInto allocates a new slice.
+//
+// Returns the same validation and cancellation errors as [Index.Search].
+func (idx *Index[K]) SearchInto(query []float32, k int, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error) {
+	return idx.searchCore(query, k, nil, dst, opts...)
 }
 
 // SearchFilter returns up to k approximate nearest neighbors whose keys satisfy filter,
@@ -25,12 +34,14 @@ func (idx *Index[K]) Search(query []float32, k int, opts ...SearchOption) ([]Sea
 //
 // Returns the same validation and cancellation errors as [Index.Search].
 func (idx *Index[K]) SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error) {
-	return idx.searchCore(query, k, filter, opts...)
+	return idx.searchCore(query, k, filter, nil, opts...)
 }
 
-func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error) {
+func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error) {
 	ef := int(idx.efSearch.Load())
 	var ctx context.Context
+	var maxDist float32
+	var maxDistSet bool
 	if len(opts) > 0 {
 		sc := defaultSearchConfig()
 		if err := sc.apply(opts); err != nil {
@@ -40,6 +51,8 @@ func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, 
 			ef = sc.ef
 		}
 		ctx = sc.ctx
+		maxDist = sc.maxDist
+		maxDistSet = sc.maxDistSet
 	}
 	if k <= 0 {
 		return nil, ErrInvalidK
@@ -53,16 +66,19 @@ func (idx *Index[K]) searchCore(query []float32, k int, filter func(id K) bool, 
 
 	scratch := idx.scratchPool.Get().(*searchScratch)
 	defer idx.scratchPool.Put(scratch)
-	return idx.searchValidated(ctx, query, k, ef, filter, scratch)
+	return idx.searchValidated(ctx, query, k, ef, maxDist, maxDistSet, filter, dst, scratch)
 }
 
-func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int, ef int, filter func(id K) bool, scratch *searchScratch) ([]SearchResult[K], error) {
+func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int, ef int, maxDist float32, maxDistSet bool, filter func(id K) bool, dst []SearchResult[K], scratch *searchScratch) ([]SearchResult[K], error) {
 	stripe := scratch.stripe
 	idx.readStripes[stripe].mu.RLock()
 	defer idx.readStripes[stripe].mu.RUnlock()
 
 	es := idx.entryState.Load()
 	if es == emptyEntry || idx.liveCount.Load() == 0 {
+		if dst != nil {
+			return dst[:0], nil
+		}
 		return []SearchResult[K]{}, nil
 	}
 
@@ -94,6 +110,7 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 	}
 
 	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
+	isF16 := idx.quant == QuantFloat16
 	iter := 0
 	for len(scratch.candidates) > 0 {
 		if iter&63 == 0 && ctx != nil {
@@ -117,7 +134,11 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 			chunk, slot := idx.getChunk(nbrID)
 			var d float32
 			if isL2 {
-				d = l2Squared(idx.vectorAt(chunk, slot), query)
+				if isF16 {
+					d = l2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+				} else {
+					d = l2Squared(idx.vectorAt(chunk, slot), query)
+				}
 			} else {
 				d = idx.distQueryAt(chunk, slot, query, qInvNorm)
 			}
@@ -143,22 +164,30 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 	}
 
 	if len(scratch.results) == 0 {
+		if dst != nil {
+			return dst[:0], nil
+		}
 		return []SearchResult[K]{}, nil
 	}
 
 	for len(scratch.results) > k {
 		if idx.metric == MetricEuclidean &&
 			(scratch.results[0].dist < 1e-36 || math.IsInf(float64(scratch.results[0].dist), 0)) {
-			return idx.rescoreEuclideanResults(scratch, query, k), nil
+			return idx.rescoreEuclideanResults(scratch, query, k, maxDist, maxDistSet, dst), nil
 		}
 		scratch.results.pop()
 	}
 	if idx.metric == MetricEuclidean &&
 		(scratch.results[0].dist < 1e-36 || math.IsInf(float64(scratch.results[0].dist), 0)) {
-		return idx.rescoreEuclideanResults(scratch, query, k), nil
+		return idx.rescoreEuclideanResults(scratch, query, k, maxDist, maxDistSet, dst), nil
 	}
 	count := len(scratch.results)
-	out := make([]SearchResult[K], count)
+	var out []SearchResult[K]
+	if cap(dst) >= count {
+		out = dst[:count]
+	} else {
+		out = make([]SearchResult[K], count)
+	}
 	needsSort := false
 	for i := count - 1; i >= 0; i-- {
 		item := scratch.results.pop()
@@ -166,7 +195,11 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 		chunk, slot := idx.getChunk(item.id)
 		if idx.metric == MetricEuclidean {
 			if d < 1e-36 {
-				d = euclideanFallback64(idx.vectorAt(chunk, slot), query)
+				if isF16 {
+					d = euclideanFallback64F16F32(idx.vectorF16At(chunk, slot), query)
+				} else {
+					d = euclideanFallback64(idx.vectorAt(chunk, slot), query)
+				}
 				if i+1 < count && d > out[i+1].Distance {
 					needsSort = true
 				}
@@ -190,15 +223,27 @@ func (idx *Index[K]) searchValidated(ctx context.Context, query []float32, k int
 			out[j+1] = cur
 		}
 	}
+	if maxDistSet {
+		keep := 0
+		for keep < len(out) && out[keep].Distance <= maxDist {
+			keep++
+		}
+		out = out[:keep]
+	}
 
 	return out, nil
 }
 
-func (idx *Index[K]) rescoreEuclideanResults(scratch *searchScratch, query []float32, k int) []SearchResult[K] {
+func (idx *Index[K]) rescoreEuclideanResults(scratch *searchScratch, query []float32, k int, maxDist float32, maxDistSet bool, dst []SearchResult[K]) []SearchResult[K] {
 	items := scratch.results
+	isF16 := idx.quant == QuantFloat16
 	for i := range items {
 		chunk, slot := idx.getChunk(items[i].id)
-		items[i].dist = euclideanFast(idx.vectorAt(chunk, slot), query)
+		if isF16 {
+			items[i].dist = euclideanFastF16F32(idx.vectorF16At(chunk, slot), query)
+		} else {
+			items[i].dist = euclideanFast(idx.vectorAt(chunk, slot), query)
+		}
 	}
 	for i := 1; i < len(items); i++ {
 		cur := items[i]
@@ -213,7 +258,19 @@ func (idx *Index[K]) rescoreEuclideanResults(scratch *searchScratch, query []flo
 	if count > k {
 		count = k
 	}
-	out := make([]SearchResult[K], count)
+	if maxDistSet {
+		keep := 0
+		for keep < count && items[keep].dist <= maxDist {
+			keep++
+		}
+		count = keep
+	}
+	var out []SearchResult[K]
+	if cap(dst) >= count {
+		out = dst[:count]
+	} else {
+		out = make([]SearchResult[K], count)
+	}
 	for i := 0; i < count; i++ {
 		out[i] = SearchResult[K]{
 			ID:       idx.extKeyAt(items[i].id),
