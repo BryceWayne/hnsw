@@ -315,3 +315,62 @@ func ExampleIndex_SetEfSearch() {
 	// Output:
 	// before=32 after=128
 }
+
+func ExampleIndex_SearchInto() {
+	idx, err := hnsw.New[string](2, hnsw.WithM(8), hnsw.WithEfConstruction(32), hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = idx.Insert("a", []float32{0, 0})
+	_ = idx.Insert("b", []float32{3, 4})
+
+	// Reuse a pre-allocated slice for 0 allocs/op steady-state search.
+	buf := make([]hnsw.SearchResult[string], 0, 4)
+	res, err := idx.SearchInto([]float32{0, 0}, 2, buf)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("%s:%.1f %s:%.1f\n", res[0].ID, res[0].Distance, res[1].ID, res[1].Distance)
+	// Output:
+	// a:0.0 b:5.0
+}
+
+func ExampleWithMaxDistance() {
+	idx, err := hnsw.New[int](2, hnsw.WithM(8), hnsw.WithEfConstruction(32), hnsw.WithSeed(1))
+	if err != nil {
+		log.Fatal(err)
+	}
+	for i := 0; i < 5; i++ {
+		_ = idx.Insert(i, []float32{float32(i), 0})
+	}
+
+	res, err := idx.Search([]float32{0, 0}, 5, hnsw.WithMaxDistance(2.0))
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("count=%d max=%.1f\n", len(res), res[len(res)-1].Distance)
+	// Output:
+	// count=3 max=2.0
+}
+
+func ExampleWithQuantization() {
+	idx, err := hnsw.New[string](
+		4,
+		hnsw.WithQuantization(hnsw.QuantFloat16),
+		hnsw.WithMetric(hnsw.MetricCosine),
+		hnsw.WithSeed(1),
+	)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = idx.Insert("doc1", []float32{1, 0, 0, 0})
+	_ = idx.Insert("doc2", []float32{0, 1, 0, 0})
+
+	res, err := idx.Search([]float32{1, 0, 0, 0}, 1)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("quant=%s top=%s dist=%.1f\n", idx.Stats().Quantization, res[0].ID, res[0].Distance)
+	// Output:
+	// quant=float16 top=doc1 dist=0.0
+}

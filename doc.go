@@ -18,21 +18,28 @@
 // raw inner product. [MetricCosine] stores inverse norms separately so [Index.Get]
 // returns exact unnormalized vectors.
 //
-// On amd64 CPUs with AVX2 and FMA, distance kernels dispatch automatically at
-// runtime via Plan 9 assembly; other architectures and builds with the
-// "purego" build tag use portable pure-Go fallbacks.
+// On amd64 CPUs with AVX2 and FMA (plus F16C for [QuantFloat16]), distance
+// kernels dispatch automatically at runtime via Plan 9 assembly. On arm64 CPUs
+// (Apple Silicon, AWS Graviton), distance kernels use 4-accumulator NEON Plan 9
+// assembly. Other architectures and builds with the "purego" build tag use
+// portable pure-Go fallbacks.
+//
+// Optional IEEE-754 binary16 vector quantization ([WithQuantization] with
+// [QuantFloat16]) halves vector memory and disk footprint while accelerating
+// high-dimensional search via hardware F16C conversion on amd64.
 //
 // # Concurrency and Zero-Allocation Search
 //
 // All [Index] operations are safe for concurrent use. Concurrent reads
-// ([Index.Search], [Index.SearchFilter], [Index.SearchBatch], [Index.Get],
-// [Index.Contains], [Index.Keys], [Index.All], [Index.Len], [Index.Stats]) and
-// new-key [Index.Insert] calls coordinate through striped read/write locks,
-// per-node locks, and atomic entry-point and efSearch state. Pooled search
-// scratch buffers (epoch-stamped visited slices, hole-sifting value-typed heaps,
-// and reusable Algorithm 4 pruning buffers) eliminate per-query heap allocations
-// in steady state, and batch workers reuse one scratch buffer per worker across
-// the entire batch.
+// ([Index.Search], [Index.SearchInto], [Index.SearchFilter], [Index.SearchBatch],
+// [Index.Get], [Index.Contains], [Index.Keys], [Index.All], [Index.Len],
+// [Index.Stats]) and new-key [Index.Insert] calls coordinate through striped
+// read/write locks, per-node locks, and atomic entry-point and efSearch state.
+// Pooled search scratch buffers (epoch-stamped visited slices, hole-sifting
+// value-typed heaps, and reusable Algorithm 4 pruning buffers) eliminate
+// per-query heap allocations in steady state—[Index.SearchInto] achieves 0
+// allocations/op when reusing a caller buffer—and batch workers reuse one
+// scratch buffer per worker across the entire batch.
 //
 // # Updates, Deletion, and Compaction
 //

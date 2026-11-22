@@ -2,6 +2,7 @@
 
 [![Go](https://github.com/BryceWayne/hnsw/actions/workflows/go.yml/badge.svg)](https://github.com/BryceWayne/hnsw/actions/workflows/go.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/BryceWayne/hnsw.svg)](https://pkg.go.dev/github.com/BryceWayne/hnsw)
+[![GitHub Release](https://img.shields.io/github/v/release/BryceWayne/hnsw)](https://github.com/BryceWayne/hnsw/releases)
 ![Go Version](https://img.shields.io/badge/go-1.23+-00ADD8?logo=go)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](./LICENSE)
 
@@ -15,8 +16,8 @@ Designed strictly as an embeddable Go package with minimal dependencies (`golang
 
 - **Generic Embeddable API (`Index[K comparable]`)**: Type-safe keys (`int`, `uint64`, `string`, `[16]byte`, or any `comparable` struct) with validated `Option` configuration and structured sentinel errors.
 - **Flat Chunked Memory Arena**: Vectors and layer-0 adjacency lists live in 256-slot contiguous `arenaChunk` slabs indexed by dense `uint32` internal IDs, maximizing cache locality and minimizing GC pressure.
-- **Zero-Allocation Hot-Path Search**: `sync.Pool`-backed `searchScratch` with epoch-stamped `[]uint32` visited tables and value-typed binary heaps reduces steady-state `Search` allocations to **1 allocation/op** (only the returned `[]SearchResult[K]` slice).
-- **Runtime SIMD Acceleration & Portable Fallbacks**: Multi-accumulator AVX2+FMA Plan 9 assembly kernels (`amd64`) handle arbitrary vector dimensions with scalar tails (~4–8x faster than scalar Go), while `!amd64` architectures and `-tags purego` builds use BCE-free unrolled pure-Go kernels.
+- **Zero-Allocation Hot-Path Search**: `sync.Pool`-backed `searchScratch` with epoch-stamped `[]uint32` visited tables and hole-sifting value-typed heaps reduces steady-state `Search` to **1 allocation/op** (result slice only) and `SearchInto` to **0 B/op, 0 allocs/op**.
+- **Cross-Platform SIMD Acceleration & FP16 Quantization**: Multi-accumulator AVX2+FMA+F16C Plan 9 assembly (`amd64`) and 4-accumulator NEON Plan 9 assembly (`arm64` — Apple Silicon / AWS Graviton) accelerate distance kernels (~3–8x faster than scalar Go), while optional `WithQuantization(QuantFloat16)` halves vector RAM & file size and speeds up `dim=1536` search by **1.75x**. Other architectures and `-tags purego` builds use portable pure-Go fallbacks.
 - **Concurrency-Safe CRUD & Bounded Batching**: Striped `[4096]sync.RWMutex` per-node locks, atomic entry-point state, atomic key upserts (`Insert`), tombstoned deletion + 2-hop repair (`Delete`, `DeleteBatch`), arena reclamation (`Compact`), and bounded worker pools (`InsertBatch`, `SearchBatch`).
 - **HNSW Algorithm 4 & Flexible Search**: Diversity-aware neighbor selection (`WithHeuristic`), `mL = 1 / ln(M)` level sampling, lossless `Get` on `MetricCosine` (inverse norms stored separately), predicate filtering (`SearchFilter`), per-query `WithSearchEf`, and `context.Context` cancellation (`WithContext`).
 - **Streaming Binary Persistence**: Versioned, CRC32-checksummed, tombstone-free binary format via `WriteTo(io.Writer)` / `ReadFrom(io.Reader)` and atomic `SaveFile` / `LoadFile`.
@@ -251,12 +252,14 @@ go run ./examples \
 | `WithCustomDistance(fn DistanceFunc)` | `nil` | Custom dissimilarity function (smaller = closer) |
 | `WithSeed(seed int64)` | time-seeded | PRNG seed for deterministic HNSW level assignment |
 | `WithHeuristic(enabled bool)` | `true` | Enable Algorithm 4 diversity-aware neighbor pruning |
+| `WithQuantization(q Quantization)` | `QuantNone` | Vector storage encoding (`QuantNone` float32 or `QuantFloat16` binary16 for 2x lower RAM & faster high-dim search) |
 
 ### Per-Call Search & Batch Options (`SearchOption`)
 
 | Option | Description |
 |---|---|
-| `WithSearchEf(ef int)` | Override `EfSearch` for a single `Search`, `SearchFilter`, or `SearchBatch` call |
+| `WithSearchEf(ef int)` | Override `EfSearch` for a single `Search`, `SearchInto`, `SearchFilter`, or `SearchBatch` call |
+| `WithMaxDistance(maxDist float32)` | Filter returned results to neighbors with final `Distance <= maxDist` |
 | `WithContext(ctx context.Context)` | Attach cancellation/deadline to search or batch operations |
 | `WithWorkers(n int)` | Set bounded worker pool size for `InsertBatch` / `SearchBatch` (default `GOMAXPROCS`) |
 
@@ -264,12 +267,12 @@ go run ./examples \
 
 - **Constructors / Loaders**: `New[K](dim int, opts ...Option) (*Index[K], error)`, `ReadFrom[K](r io.Reader, opts ...Option) (*Index[K], error)`, `LoadFile[K](path string, opts ...Option) (*Index[K], error)`
 - **Write / Mutate**: `Insert(id K, vec []float32) error`, `InsertBatch(items []Item[K], opts ...SearchOption) error`, `Delete(id K) bool`, `DeleteBatch(ids []K) int`, `Compact() error`, `Clear()`, `SetEfSearch(ef int) error`
-- **Query / Inspect**: `Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error)`, `Get(id K) ([]float32, bool)`, `Contains(id K) bool`, `Keys() []K`, `All() iter.Seq2[K, []float32]`, `Len() int`, `Dim() int`, `Stats() IndexStats`
+- **Query / Inspect**: `Search(query []float32, k int, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchInto(query []float32, k int, dst []SearchResult[K], opts ...SearchOption) ([]SearchResult[K], error)`, `SearchFilter(query []float32, k int, filter func(id K) bool, opts ...SearchOption) ([]SearchResult[K], error)`, `SearchBatch(queries [][]float32, k int, opts ...SearchOption) ([][]SearchResult[K], error)`, `Get(id K) ([]float32, bool)`, `Contains(id K) bool`, `Keys() []K`, `All() iter.Seq2[K, []float32]`, `Len() int`, `Dim() int`, `Stats() IndexStats`
 - **Persist**: `WriteTo(w io.Writer) (int64, error)`, `SaveFile(path string) error`
 
 ### `IndexStats` Fields
 
-`Len`, `Deleted`, `Capacity`, `Dim`, `MaxLevel`, `EntryPointSet`, `M`, `Mmax`, `EfConstruction`, `EfSearch`, `Metric`, `Heuristic`, `MemoryBytes`.
+`Len`, `Deleted`, `Capacity`, `Dim`, `MaxLevel`, `EntryPointSet`, `M`, `Mmax`, `EfConstruction`, `EfSearch`, `Metric`, `Quantization`, `Heuristic`, `MemoryBytes`.
 
 ### Sentinel Errors
 
@@ -334,8 +337,19 @@ All measurements below were collected directly from this codebase (`go1.23.3 lin
 |---|---|---|---|---|---|
 | `BenchmarkSearchFilter/selectivity=50pct` (`ef=64`) | `77,246` | `12,946 queries/s` | `0.9920` | `208` | `2` |
 | `BenchmarkSearchFilter/selectivity=10pct` (`ef=64`) | `173,822` | `5,753 queries/s` | `0.9990` | `208` | `2` |
-| `BenchmarkPersistence/WriteTo_10K_dim128` | `5,139,080` | `1,279.64 MB/s` | — | `148,480` | `17` |
-| `BenchmarkPersistence/ReadFrom_10K_dim128` | `4,316,376` | `1,523.54 MB/s` | — | `7,704,217` | `1,511` |
+| `BenchmarkPersistence/WriteTo_10K_dim128` | `4,597,643` | `1,430.34 MB/s` | — | `152,568` | `17` |
+| `BenchmarkPersistence/ReadFrom_10K_dim128` | `4,052,509` | `1,622.74 MB/s` | — | `7,708,338` | `1,511` |
+
+### FP16 Quantization (`QuantFloat16` + AVX2+F16C+FMA) vs `float32` (`5K` Vectors, `SearchInto`, `0 allocs/op`)
+
+| Operation & Dim | `QuantNone` (`float32`) | `QuantFloat16` (`binary16`) | Speedup / Savings |
+|---|---|---|---|
+| `Search` (12T, `dim=768`) | `9,465 ns/op` (`105,654 q/s`) | **`6,739 ns/op`** (`148,385 q/s`) | **`1.40x` faster** |
+| `Arena RAM` (`dim=768`) | `15.93 MB` | **`8.43 MB`** | **`-47.1%` RAM** |
+| `ReadFrom` (`dim=768`) | `8.70 ms` (`15.34 MB` file) | **`4.51 ms`** (`8.02 MB` file) | **`1.93x` faster, `-47.7%` size** |
+| `Search` (12T, `dim=1536`) | `21,358 ns/op` (`46,822 q/s`) | **`12,228 ns/op`** (`81,776 q/s`) | **`1.75x` faster** |
+| `Arena RAM` (`dim=1536`) | `30.93 MB` | **`15.93 MB`** | **`-48.5%` RAM** |
+| `ReadFrom` (`dim=1536`) | `17.17 ms` (`29.99 MB` file) | **`8.67 ms`** (`15.34 MB` file) | **`1.98x` faster, `-48.9%` size** |
 
 ### Distance Kernel Microbenchmarks (`BenchmarkDistanceAVX2VsFallback`, `0 B/op`, `0 allocs/op`)
 
@@ -374,7 +388,7 @@ All measurements below were collected directly from this codebase (`go1.23.3 lin
 | `8` | `744,247` | `85,993` | `5.01x` |
 | `16` (12 CPUs) | `622,595` | `102,795` | `5.99x` |
 
-- **Insertion Throughput**: `BenchmarkInsert` (single-goroutine `Insert`): **`10,129 vecs/s`** (`98,724 ns/vec`, `122 allocs/op`); `BenchmarkBatchOperations/InsertBatch` (12-CPU worker pool): **`46,964 vecs/s`** (`21,293 ns/vec`, `526 allocs/op`).
+- **Insertion & Deletion Throughput**: `BenchmarkInsert` (single-goroutine `Insert`): **`10,129 vecs/s`** (`98,724 ns/vec`, `122 allocs/op`); `BenchmarkBatchOperations/InsertBatch` (12-CPU worker pool): **`46,964 vecs/s`** (`21,293 ns/vec`, `526 allocs/op`); `BenchmarkDelete`: **`188,632 ns/op`** (`0 B/op`, `0 allocs/op`).
 
 ---
 

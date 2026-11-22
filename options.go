@@ -18,6 +18,8 @@ type config struct {
 	metricSet      bool
 	customDist     DistanceFunc
 	customDistSet  bool
+	quant          Quantization
+	quantSet       bool
 	seed           int64
 	hasSeed        bool
 	heuristic      bool
@@ -30,6 +32,7 @@ func newDefaultConfig() config {
 		efConstruction: 200,
 		efSearch:       50,
 		metric:         MetricEuclidean,
+		quant:          QuantNone,
 		heuristic:      true,
 	}
 }
@@ -56,6 +59,9 @@ func (c *config) validate() error {
 		}
 	} else if c.metric > MetricDotProduct {
 		return fmt.Errorf("%w: unknown metric %d", ErrInvalidConfig, c.metric)
+	}
+	if c.quant > QuantFloat16 {
+		return fmt.Errorf("%w: unknown quantization %d", ErrInvalidConfig, c.quant)
 	}
 	return nil
 }
@@ -166,12 +172,28 @@ func WithHeuristic(enabled bool) Option {
 	}
 }
 
+// WithQuantization selects the vector storage encoding ([QuantNone] or [QuantFloat16]).
+// The default is [QuantNone] (full float32). [QuantFloat16] halves vector memory and
+// memory bandwidth using IEEE-754 binary16 storage (AVX2+F16C+FMA accelerated on amd64).
+func WithQuantization(q Quantization) Option {
+	return func(c *config) error {
+		if q > QuantFloat16 {
+			return fmt.Errorf("%w: invalid quantization %d", ErrInvalidConfig, q)
+		}
+		c.quant = q
+		c.quantSet = true
+		return nil
+	}
+}
+
 type searchConfig struct {
 	ef         int
 	efSet      bool
 	ctx        context.Context
 	workers    int
 	workersSet bool
+	maxDist    float32
+	maxDistSet bool
 }
 
 func defaultSearchConfig() searchConfig {
@@ -189,6 +211,9 @@ func (sc *searchConfig) apply(opts []SearchOption) error {
 	}
 	if sc.workersSet && sc.workers <= 0 {
 		return fmt.Errorf("%w: worker count must be positive", ErrInvalidConfig)
+	}
+	if sc.maxDistSet && math.IsNaN(float64(sc.maxDist)) {
+		return fmt.Errorf("%w: max distance cannot be NaN", ErrInvalidConfig)
 	}
 	if sc.ctx != nil {
 		if err := sc.ctx.Err(); err != nil {
@@ -236,5 +261,16 @@ func WithWorkers(n int) SearchOption {
 	return func(sc *searchConfig) {
 		sc.workers = n
 		sc.workersSet = true
+	}
+}
+
+// WithMaxDistance filters search results to include only neighbors with final Distance <= maxDist.
+// Applies across [Index.Search], [Index.SearchFilter], [Index.SearchInto], and [Index.SearchBatch].
+// Non-matching nodes are still traversed so graph connectivity is preserved.
+// Returns [ErrInvalidConfig] if maxDist is NaN.
+func WithMaxDistance(maxDist float32) SearchOption {
+	return func(sc *searchConfig) {
+		sc.maxDist = maxDist
+		sc.maxDistSet = true
 	}
 }

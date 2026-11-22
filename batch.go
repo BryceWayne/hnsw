@@ -154,7 +154,7 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 					return nil, err
 				}
 			}
-			res, err := idx.searchValidated(sc.ctx, q, k, ef, nil, scratch)
+			res, err := idx.searchValidated(sc.ctx, q, k, ef, sc.maxDist, sc.maxDistSet, nil, nil, scratch)
 			if err != nil {
 				return nil, err
 			}
@@ -184,7 +184,7 @@ func (idx *Index[K]) SearchBatch(queries [][]float32, k int, opts ...SearchOptio
 				if i >= len(queries) {
 					return
 				}
-				res, err := idx.searchValidated(sc.ctx, queries[i], k, ef, nil, scratch)
+				res, err := idx.searchValidated(sc.ctx, queries[i], k, ef, sc.maxDist, sc.maxDistSet, nil, nil, scratch)
 				if err != nil {
 					errOnce.Do(func() { firstErr = err })
 					return

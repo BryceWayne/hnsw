@@ -18,6 +18,7 @@ import (
 
 const (
 	serVersion         uint32 = 1
+	serVersionV2       uint32 = 2
 	maxSerDim          uint32 = 1 << 20
 	maxSerKeyTypeLen   uint16 = 4096
 	maxSerStringKeyLen uint32 = 16 << 20
@@ -178,13 +179,18 @@ func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 	// Header
 	var hdr [48]byte
 	copy(hdr[0:4], serMagic[:])
-	binary.LittleEndian.PutUint32(hdr[4:8], serVersion)
+	ver := serVersion
+	if idx.quant != QuantNone {
+		ver = serVersionV2
+	}
+	binary.LittleEndian.PutUint32(hdr[4:8], ver)
 	binary.LittleEndian.PutUint32(hdr[8:12], uint32(idx.dim))
 	hdr[12] = uint8(idx.metric)
 	if idx.heuristic {
 		hdr[13] = 1
 	}
-	binary.LittleEndian.PutUint16(hdr[14:16], 0)
+	hdr[14] = uint8(idx.quant)
+	hdr[15] = 0
 	binary.LittleEndian.PutUint32(hdr[16:20], uint32(idx.m))
 	binary.LittleEndian.PutUint32(hdr[20:24], uint32(idx.mmax))
 	binary.LittleEndian.PutUint32(hdr[24:28], uint32(idx.efConstruction))
@@ -218,22 +224,44 @@ func (idx *Index[K]) WriteTo(w io.Writer) (int64, error) {
 		if chunkFloats > 4096 {
 			chunkFloats = 4096
 		}
-		vecBuf := make([]byte, chunkFloats*4)
-		for _, oldID := range liveIDs {
-			chunk, slot := idx.getChunk(oldID)
-			vec := idx.vectorAt(chunk, slot)
-			for off := 0; off < len(vec); off += chunkFloats {
-				end := off + chunkFloats
-				if end > len(vec) {
-					end = len(vec)
+		if idx.quant == QuantFloat16 {
+			vecBuf := make([]byte, chunkFloats*2)
+			for _, oldID := range liveIDs {
+				chunk, slot := idx.getChunk(oldID)
+				vec := idx.vectorF16At(chunk, slot)
+				for off := 0; off < len(vec); off += chunkFloats {
+					end := off + chunkFloats
+					if end > len(vec) {
+						end = len(vec)
+					}
+					sub := vec[off:end]
+					buf := vecBuf[:len(sub)*2]
+					for j, h := range sub {
+						binary.LittleEndian.PutUint16(buf[j*2:], h)
+					}
+					if _, err := mw.Write(buf); err != nil {
+						return cw.n, err
+					}
 				}
-				sub := vec[off:end]
-				buf := vecBuf[:len(sub)*4]
-				for j, v := range sub {
-					binary.LittleEndian.PutUint32(buf[j*4:], math.Float32bits(v))
-				}
-				if _, err := mw.Write(buf); err != nil {
-					return cw.n, err
+			}
+		} else {
+			vecBuf := make([]byte, chunkFloats*4)
+			for _, oldID := range liveIDs {
+				chunk, slot := idx.getChunk(oldID)
+				vec := idx.vectorAt(chunk, slot)
+				for off := 0; off < len(vec); off += chunkFloats {
+					end := off + chunkFloats
+					if end > len(vec) {
+						end = len(vec)
+					}
+					sub := vec[off:end]
+					buf := vecBuf[:len(sub)*4]
+					for j, v := range sub {
+						binary.LittleEndian.PutUint32(buf[j*4:], math.Float32bits(v))
+					}
+					if _, err := mw.Write(buf); err != nil {
+						return cw.n, err
+					}
 				}
 			}
 		}
@@ -489,7 +517,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		return nil, fmt.Errorf("%w: invalid magic header", ErrCorruptedIndex)
 	}
 	version := binary.LittleEndian.Uint32(hdr[4:8])
-	if version != serVersion {
+	if version != serVersion && version != serVersionV2 {
 		return nil, fmt.Errorf("%w: unsupported version %d", ErrCorruptedIndex, version)
 	}
 	dim := binary.LittleEndian.Uint32(hdr[8:12])
@@ -504,9 +532,23 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 	if heurByte > 1 {
 		return nil, fmt.Errorf("%w: invalid heuristic flag %d", ErrCorruptedIndex, heurByte)
 	}
-	reserved := binary.LittleEndian.Uint16(hdr[14:16])
-	if reserved != 0 {
-		return nil, fmt.Errorf("%w: non-zero reserved field", ErrCorruptedIndex)
+	quant := QuantNone
+	if version == serVersion {
+		reserved := binary.LittleEndian.Uint16(hdr[14:16])
+		if reserved != 0 {
+			return nil, fmt.Errorf("%w: non-zero reserved field", ErrCorruptedIndex)
+		}
+	} else {
+		quant = Quantization(hdr[14])
+		if quant > QuantFloat16 {
+			return nil, fmt.Errorf("%w: invalid quantization %d", ErrCorruptedIndex, quant)
+		}
+		if hdr[15] != 0 {
+			return nil, fmt.Errorf("%w: non-zero reserved field", ErrCorruptedIndex)
+		}
+	}
+	if optCfg.quantSet && optCfg.quant != quant {
+		return nil, fmt.Errorf("%w: quantization option %s does not match serialized quantization %s", ErrInvalidConfig, optCfg.quant, quant)
 	}
 	m := binary.LittleEndian.Uint32(hdr[16:20])
 	mmax := binary.LittleEndian.Uint32(hdr[20:24])
@@ -589,6 +631,7 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		mL:             1.0 / math.Log(float64(m)),
 		metric:         metric,
 		customDist:     customDist,
+		quant:          quant,
 		heuristic:      heurByte == 1,
 		seed:           effSeed,
 		extToInt:       make(map[K]uint32),
@@ -616,7 +659,11 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 	}
 	var vecBuf []byte
 	if len(keys) > 0 {
-		vecBuf = make([]byte, chunkFloats*4)
+		elemBytes := 4
+		if quant == QuantFloat16 {
+			elemBytes = 2
+		}
+		vecBuf = make([]byte, chunkFloats*elemBytes)
 	}
 
 	for id := 0; id < len(keys); id++ {
@@ -633,9 +680,13 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		chunk := page.chunks[l2].Load()
 		if chunk == nil {
 			chunk = &arenaChunk[K]{
-				vecs:     make([]float32, chunkSize*dimInt),
 				intToExt: make([]K, chunkSize),
 				l0Edges:  make([]uint32, chunkSize*mmaxInt),
+			}
+			if quant == QuantFloat16 {
+				chunk.vecsF16 = make([]uint16, chunkSize*dimInt)
+			} else {
+				chunk.vecs = make([]float32, chunkSize*dimInt)
 			}
 			if metric == MetricCosine {
 				chunk.invNorms = make([]float32, chunkSize)
@@ -651,27 +702,52 @@ func ReadFrom[K comparable](r io.Reader, opts ...Option) (*Index[K], error) {
 		chunk.intToExt[slot] = extKey
 
 		off := slot * dimInt
-		vecSlice := chunk.vecs[off : off+dimInt]
-		for vOff := 0; vOff < dimInt; vOff += chunkFloats {
-			end := vOff + chunkFloats
-			if end > dimInt {
-				end = dimInt
-			}
-			sub := vecSlice[vOff:end]
-			buf := vecBuf[:len(sub)*4]
-			if _, err := io.ReadFull(tr, buf); err != nil {
-				return nil, wrapCorrupt(err)
-			}
-			for j := range sub {
-				v := math.Float32frombits(binary.LittleEndian.Uint32(buf[j*4:]))
-				if v != v || math.IsInf(float64(v), 0) {
-					return nil, fmt.Errorf("%w: non-finite float in serialized vector", ErrCorruptedIndex)
+		if quant == QuantFloat16 {
+			vecSlice := chunk.vecsF16[off : off+dimInt]
+			for vOff := 0; vOff < dimInt; vOff += chunkFloats {
+				end := vOff + chunkFloats
+				if end > dimInt {
+					end = dimInt
 				}
-				sub[j] = v
+				sub := vecSlice[vOff:end]
+				buf := vecBuf[:len(sub)*2]
+				if _, err := io.ReadFull(tr, buf); err != nil {
+					return nil, wrapCorrupt(err)
+				}
+				for j := range sub {
+					h := binary.LittleEndian.Uint16(buf[j*2:])
+					if !isFloat16Finite(h) {
+						return nil, fmt.Errorf("%w: non-finite float16 in serialized vector", ErrCorruptedIndex)
+					}
+					sub[j] = h
+				}
 			}
-		}
-		if metric == MetricCosine {
-			chunk.invNorms[slot] = computeInvNorm(vecSlice)
+			if metric == MetricCosine {
+				chunk.invNorms[slot] = computeInvNormF16(vecSlice)
+			}
+		} else {
+			vecSlice := chunk.vecs[off : off+dimInt]
+			for vOff := 0; vOff < dimInt; vOff += chunkFloats {
+				end := vOff + chunkFloats
+				if end > dimInt {
+					end = dimInt
+				}
+				sub := vecSlice[vOff:end]
+				buf := vecBuf[:len(sub)*4]
+				if _, err := io.ReadFull(tr, buf); err != nil {
+					return nil, wrapCorrupt(err)
+				}
+				for j := range sub {
+					v := math.Float32frombits(binary.LittleEndian.Uint32(buf[j*4:]))
+					if v != v || math.IsInf(float64(v), 0) {
+						return nil, fmt.Errorf("%w: non-finite float in serialized vector", ErrCorruptedIndex)
+					}
+					sub[j] = v
+				}
+			}
+			if metric == MetricCosine {
+				chunk.invNorms[slot] = computeInvNorm(vecSlice)
+			}
 		}
 	}
 

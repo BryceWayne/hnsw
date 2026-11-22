@@ -32,6 +32,15 @@ func FuzzReadFrom(f *testing.F) {
 		}
 	}
 
+	if idx, err := hnsw.New[int](4, hnsw.WithQuantization(hnsw.QuantFloat16), hnsw.WithSeed(3)); err == nil {
+		_ = idx.Insert(1, []float32{1, 2, 3, 4})
+		_ = idx.Insert(2, []float32{-1, 0.5, 0.25, 0})
+		var buf bytes.Buffer
+		if _, err := idx.WriteTo(&buf); err == nil {
+			f.Add(buf.Bytes())
+		}
+	}
+
 	// Seed with malformed / truncated inputs.
 	f.Add([]byte{})
 	f.Add([]byte("HNSW\x01\x00\x00\x00"))

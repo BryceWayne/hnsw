@@ -12,9 +12,12 @@ type searchScratch struct {
 	heuristicWork    []distNode
 	selected         []distNode
 	selectedVecs     [][]float32
+	selectedVecsF16  [][]uint16
 	selectedInvNorms []float32
 	discarded        []distNode
 	chosenByLevel    [maxNodeLevel + 1][]uint32
+	tmpVecA          []float32
+	tmpVecB          []float32
 }
 
 func newSearchScratch(stripe uint32, mmax int) *searchScratch {
@@ -29,6 +32,7 @@ func newSearchScratch(stripe uint32, mmax int) *searchScratch {
 		heuristicWork:    make([]distNode, 0, mmax+1),
 		selected:         make([]distNode, 0, mmax),
 		selectedVecs:     make([][]float32, 0, mmax),
+		selectedVecsF16:  make([][]uint16, 0, mmax),
 		selectedInvNorms: make([]float32, 0, mmax),
 		discarded:        make([]distNode, 0, mmax),
 	}

@@ -161,3 +161,358 @@ dot_done:
 dot_zero:
 	MOVL	$0, ret+24(FP)
 	RET
+
+// func l2SquaredF16F32AVX2(a *uint16, b *float32, n int) float32
+TEXT ·l2SquaredF16F32AVX2(SB), NOSPLIT, $0-28
+	MOVQ	a+0(FP), SI
+	MOVQ	b+8(FP), DI
+	MOVQ	n+16(FP), BX
+	TESTQ	BX, BX
+	JLE	l2_f16f32_zero
+
+	VXORPS	Y0, Y0, Y0
+	MOVQ	BX, CX
+	SHRQ	$5, CX			// n / 32
+	JZ	l2_f16f32_loop8_check
+
+	VXORPS	Y1, Y1, Y1
+	VXORPS	Y2, Y2, Y2
+	VXORPS	Y3, Y3, Y3
+
+l2_f16f32_loop32:
+	VCVTPH2PS	(SI), Y4
+	VCVTPH2PS	16(SI), Y5
+	VCVTPH2PS	32(SI), Y6
+	VCVTPH2PS	48(SI), Y7
+	VSUBPS		(DI), Y4, Y4
+	VSUBPS		32(DI), Y5, Y5
+	VSUBPS		64(DI), Y6, Y6
+	VSUBPS		96(DI), Y7, Y7
+	VFMADD231PS	Y4, Y4, Y0
+	VFMADD231PS	Y5, Y5, Y1
+	VFMADD231PS	Y6, Y6, Y2
+	VFMADD231PS	Y7, Y7, Y3
+	ADDQ		$64, SI
+	ADDQ		$128, DI
+	DECQ		CX
+	JNZ		l2_f16f32_loop32
+
+	VADDPS	Y1, Y0, Y0
+	VADDPS	Y3, Y2, Y2
+	VADDPS	Y2, Y0, Y0
+
+l2_f16f32_loop8_check:
+	MOVQ	BX, CX
+	ANDQ	$31, CX
+	SHRQ	$3, CX			// (n % 32) / 8
+	JZ	l2_f16f32_reduce
+
+l2_f16f32_loop8:
+	VCVTPH2PS	(SI), Y4
+	VSUBPS		(DI), Y4, Y4
+	VFMADD231PS	Y4, Y4, Y0
+	ADDQ		$16, SI
+	ADDQ		$32, DI
+	DECQ		CX
+	JNZ		l2_f16f32_loop8
+
+l2_f16f32_reduce:
+	VEXTRACTF128	$1, Y0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x4E, X0, X0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x55, X0, X0, X1
+	VADDSS		X1, X0, X0
+
+	ANDQ	$7, BX
+	JZ	l2_f16f32_done
+
+l2_f16f32_tail:
+	MOVWLZX		(SI), AX
+	VMOVD		AX, X1
+	VCVTPH2PS	X1, X1
+	VSUBSS		(DI), X1, X1
+	VFMADD231SS	X1, X1, X0
+	ADDQ		$2, SI
+	ADDQ		$4, DI
+	DECQ		BX
+	JNZ		l2_f16f32_tail
+
+l2_f16f32_done:
+	VMOVSS	X0, ret+24(FP)
+	VZEROUPPER
+	RET
+
+l2_f16f32_zero:
+	MOVL	$0, ret+24(FP)
+	RET
+
+// func dotProductF16F32AVX2(a *uint16, b *float32, n int) float32
+TEXT ·dotProductF16F32AVX2(SB), NOSPLIT, $0-28
+	MOVQ	a+0(FP), SI
+	MOVQ	b+8(FP), DI
+	MOVQ	n+16(FP), BX
+	TESTQ	BX, BX
+	JLE	dot_f16f32_zero
+
+	VXORPS	Y0, Y0, Y0
+	MOVQ	BX, CX
+	SHRQ	$5, CX			// n / 32
+	JZ	dot_f16f32_loop8_check
+
+	VXORPS	Y1, Y1, Y1
+	VXORPS	Y2, Y2, Y2
+	VXORPS	Y3, Y3, Y3
+
+dot_f16f32_loop32:
+	VCVTPH2PS	(SI), Y4
+	VCVTPH2PS	16(SI), Y5
+	VCVTPH2PS	32(SI), Y6
+	VCVTPH2PS	48(SI), Y7
+	VFMADD231PS	(DI), Y4, Y0
+	VFMADD231PS	32(DI), Y5, Y1
+	VFMADD231PS	64(DI), Y6, Y2
+	VFMADD231PS	96(DI), Y7, Y3
+	ADDQ		$64, SI
+	ADDQ		$128, DI
+	DECQ		CX
+	JNZ		dot_f16f32_loop32
+
+	VADDPS	Y1, Y0, Y0
+	VADDPS	Y3, Y2, Y2
+	VADDPS	Y2, Y0, Y0
+
+dot_f16f32_loop8_check:
+	MOVQ	BX, CX
+	ANDQ	$31, CX
+	SHRQ	$3, CX
+	JZ	dot_f16f32_reduce
+
+dot_f16f32_loop8:
+	VCVTPH2PS	(SI), Y4
+	VFMADD231PS	(DI), Y4, Y0
+	ADDQ		$16, SI
+	ADDQ		$32, DI
+	DECQ		CX
+	JNZ		dot_f16f32_loop8
+
+dot_f16f32_reduce:
+	VEXTRACTF128	$1, Y0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x4E, X0, X0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x55, X0, X0, X1
+	VADDSS		X1, X0, X0
+
+	ANDQ	$7, BX
+	JZ	dot_f16f32_done
+
+dot_f16f32_tail:
+	MOVWLZX		(SI), AX
+	VMOVD		AX, X1
+	VCVTPH2PS	X1, X1
+	VFMADD231SS	(DI), X1, X0
+	ADDQ		$2, SI
+	ADDQ		$4, DI
+	DECQ		BX
+	JNZ		dot_f16f32_tail
+
+dot_f16f32_done:
+	VMOVSS	X0, ret+24(FP)
+	VZEROUPPER
+	RET
+
+dot_f16f32_zero:
+	MOVL	$0, ret+24(FP)
+	RET
+
+// func l2SquaredF16F16AVX2(a, b *uint16, n int) float32
+TEXT ·l2SquaredF16F16AVX2(SB), NOSPLIT, $0-28
+	MOVQ	a+0(FP), SI
+	MOVQ	b+8(FP), DI
+	MOVQ	n+16(FP), BX
+	TESTQ	BX, BX
+	JLE	l2_f16f16_zero
+
+	VXORPS	Y0, Y0, Y0
+	MOVQ	BX, CX
+	SHRQ	$5, CX			// n / 32
+	JZ	l2_f16f16_loop8_check
+
+	VXORPS	Y1, Y1, Y1
+	VXORPS	Y2, Y2, Y2
+	VXORPS	Y3, Y3, Y3
+
+l2_f16f16_loop32:
+	VCVTPH2PS	(SI), Y4
+	VCVTPH2PS	16(SI), Y5
+	VCVTPH2PS	32(SI), Y6
+	VCVTPH2PS	48(SI), Y7
+	VCVTPH2PS	(DI), Y8
+	VCVTPH2PS	16(DI), Y9
+	VCVTPH2PS	32(DI), Y10
+	VCVTPH2PS	48(DI), Y11
+	VSUBPS		Y8, Y4, Y4
+	VSUBPS		Y9, Y5, Y5
+	VSUBPS		Y10, Y6, Y6
+	VSUBPS		Y11, Y7, Y7
+	VFMADD231PS	Y4, Y4, Y0
+	VFMADD231PS	Y5, Y5, Y1
+	VFMADD231PS	Y6, Y6, Y2
+	VFMADD231PS	Y7, Y7, Y3
+	ADDQ		$64, SI
+	ADDQ		$64, DI
+	DECQ		CX
+	JNZ		l2_f16f16_loop32
+
+	VADDPS	Y1, Y0, Y0
+	VADDPS	Y3, Y2, Y2
+	VADDPS	Y2, Y0, Y0
+
+l2_f16f16_loop8_check:
+	MOVQ	BX, CX
+	ANDQ	$31, CX
+	SHRQ	$3, CX
+	JZ	l2_f16f16_reduce
+
+l2_f16f16_loop8:
+	VCVTPH2PS	(SI), Y4
+	VCVTPH2PS	(DI), Y5
+	VSUBPS		Y5, Y4, Y4
+	VFMADD231PS	Y4, Y4, Y0
+	ADDQ		$16, SI
+	ADDQ		$16, DI
+	DECQ		CX
+	JNZ		l2_f16f16_loop8
+
+l2_f16f16_reduce:
+	VEXTRACTF128	$1, Y0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x4E, X0, X0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x55, X0, X0, X1
+	VADDSS		X1, X0, X0
+
+	ANDQ	$7, BX
+	JZ	l2_f16f16_done
+
+l2_f16f16_tail:
+	MOVWLZX		(SI), AX
+	VMOVD		AX, X1
+	VCVTPH2PS	X1, X1
+	MOVWLZX		(DI), DX
+	VMOVD		DX, X2
+	VCVTPH2PS	X2, X2
+	VSUBSS		X2, X1, X1
+	VFMADD231SS	X1, X1, X0
+	ADDQ		$2, SI
+	ADDQ		$2, DI
+	DECQ		BX
+	JNZ		l2_f16f16_tail
+
+l2_f16f16_done:
+	VMOVSS	X0, ret+24(FP)
+	VZEROUPPER
+	RET
+
+l2_f16f16_zero:
+	MOVL	$0, ret+24(FP)
+	RET
+
+// func dotProductF16F16AVX2(a, b *uint16, n int) float32
+TEXT ·dotProductF16F16AVX2(SB), NOSPLIT, $0-28
+	MOVQ	a+0(FP), SI
+	MOVQ	b+8(FP), DI
+	MOVQ	n+16(FP), BX
+	TESTQ	BX, BX
+	JLE	dot_f16f16_zero
+
+	VXORPS	Y0, Y0, Y0
+	MOVQ	BX, CX
+	SHRQ	$5, CX			// n / 32
+	JZ	dot_f16f16_loop8_check
+
+	VXORPS	Y1, Y1, Y1
+	VXORPS	Y2, Y2, Y2
+	VXORPS	Y3, Y3, Y3
+
+dot_f16f16_loop32:
+	VCVTPH2PS	(SI), Y4
+	VCVTPH2PS	16(SI), Y5
+	VCVTPH2PS	32(SI), Y6
+	VCVTPH2PS	48(SI), Y7
+	VCVTPH2PS	(DI), Y8
+	VCVTPH2PS	16(DI), Y9
+	VCVTPH2PS	32(DI), Y10
+	VCVTPH2PS	48(DI), Y11
+	VFMADD231PS	Y8, Y4, Y0
+	VFMADD231PS	Y9, Y5, Y1
+	VFMADD231PS	Y10, Y6, Y2
+	VFMADD231PS	Y11, Y7, Y3
+	ADDQ		$64, SI
+	ADDQ		$64, DI
+	DECQ		CX
+	JNZ		dot_f16f16_loop32
+
+	VADDPS	Y1, Y0, Y0
+	VADDPS	Y3, Y2, Y2
+	VADDPS	Y2, Y0, Y0
+
+dot_f16f16_loop8_check:
+	MOVQ	BX, CX
+	ANDQ	$31, CX
+	SHRQ	$3, CX
+	JZ	dot_f16f16_reduce
+
+dot_f16f16_loop8:
+	VCVTPH2PS	(SI), Y4
+	VCVTPH2PS	(DI), Y5
+	VFMADD231PS	Y5, Y4, Y0
+	ADDQ		$16, SI
+	ADDQ		$16, DI
+	DECQ		CX
+	JNZ		dot_f16f16_loop8
+
+dot_f16f16_reduce:
+	VEXTRACTF128	$1, Y0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x4E, X0, X0, X1
+	VADDPS		X1, X0, X0
+	VSHUFPS		$0x55, X0, X0, X1
+	VADDSS		X1, X0, X0
+
+	ANDQ	$7, BX
+	JZ	dot_f16f16_done
+
+dot_f16f16_tail:
+	MOVWLZX		(SI), AX
+	VMOVD		AX, X1
+	VCVTPH2PS	X1, X1
+	MOVWLZX		(DI), DX
+	VMOVD		DX, X2
+	VCVTPH2PS	X2, X2
+	VFMADD231SS	X2, X1, X0
+	ADDQ		$2, SI
+	ADDQ		$2, DI
+	DECQ		BX
+	JNZ		dot_f16f16_tail
+
+dot_f16f16_done:
+	VMOVSS	X0, ret+24(FP)
+	VZEROUPPER
+	RET
+
+dot_f16f16_zero:
+	MOVL	$0, ret+24(FP)
+	RET
+
+// func hasF16C() bool
+// Checks CPUID leaf 1, ECX bit 29 (F16C).
+TEXT ·hasF16C(SB), NOSPLIT, $0-1
+	MOVL	$1, AX
+	XORL	CX, CX
+	CPUID
+	SHRL	$29, CX
+	ANDL	$1, CX
+	MOVB	CL, ret+0(FP)
+	RET

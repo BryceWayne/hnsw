@@ -40,6 +40,7 @@ type dirPage[K comparable] struct {
 
 type arenaChunk[K comparable] struct {
 	vecs        []float32
+	vecsF16     []uint16
 	invNorms    []float32
 	intToExt    []K
 	deleted     [chunkSize / 64]atomic.Uint64
@@ -89,6 +90,8 @@ type IndexStats struct {
 	EfSearch int
 	// Metric is the configured distance metric.
 	Metric Metric
+	// Quantization is the configured vector storage encoding.
+	Quantization Quantization
 	// Heuristic reports whether Algorithm 4 neighbor selection is enabled.
 	Heuristic bool
 	// MemoryBytes is the estimated memory footprint of allocated arena slabs and graph structures in bytes.
@@ -105,6 +108,7 @@ type Index[K comparable] struct {
 	mL             float64
 	metric         Metric
 	customDist     DistanceFunc
+	quant          Quantization
 	heuristic      bool
 	seed           int64
 
@@ -159,6 +163,7 @@ func New[K comparable](dim int, opts ...Option) (*Index[K], error) {
 		mL:             1.0 / math.Log(float64(cfg.m)),
 		metric:         cfg.metric,
 		customDist:     cfg.customDist,
+		quant:          cfg.quant,
 		heuristic:      cfg.heuristic,
 		seed:           seed,
 		extToInt:       make(map[K]uint32),
@@ -214,6 +219,11 @@ func (idx *Index[K]) getChunk(id uint32) (*arenaChunk[K], int) {
 func (idx *Index[K]) vectorAt(chunk *arenaChunk[K], slot int) []float32 {
 	off := slot * idx.dim
 	return chunk.vecs[off : off+idx.dim : off+idx.dim]
+}
+
+func (idx *Index[K]) vectorF16At(chunk *arenaChunk[K], slot int) []uint16 {
+	off := slot * idx.dim
+	return chunk.vecsF16[off : off+idx.dim : off+idx.dim]
 }
 
 func (idx *Index[K]) extKeyAt(id uint32) K {
@@ -275,6 +285,25 @@ func (idx *Index[K]) randomLevel() uint8 {
 }
 
 func (idx *Index[K]) distQueryAt(chunk *arenaChunk[K], slot int, query []float32, qInvNorm float32) float32 {
+	if idx.quant == QuantFloat16 {
+		vec := idx.vectorF16At(chunk, slot)
+		switch idx.metric {
+		case MetricEuclidean, MetricSquaredEuclidean:
+			return l2SquaredF16F32(vec, query)
+		case MetricCosine:
+			return cosineWithInvNormsF16F32(vec, query, chunk.invNorms[slot], qInvNorm)
+		case MetricDotProduct:
+			d := dotProductF16F32(vec, query)
+			if d == 0 {
+				return 0
+			}
+			return -d
+		default:
+			tmp := make([]float32, idx.dim)
+			decodeFloat16Slice(tmp, vec)
+			return idx.customDist(tmp, query)
+		}
+	}
 	vec := idx.vectorAt(chunk, slot)
 	switch idx.metric {
 	case MetricEuclidean, MetricSquaredEuclidean:
@@ -309,6 +338,36 @@ func (idx *Index[K]) distVecs(va []float32, invA float32, vb []float32, invB flo
 	}
 }
 
+func (idx *Index[K]) distVecsF16(va []uint16, invA float32, vb []uint16, invB float32, scratch *searchScratch) float32 {
+	switch idx.metric {
+	case MetricEuclidean, MetricSquaredEuclidean:
+		return l2SquaredF16F16(va, vb)
+	case MetricCosine:
+		return cosineWithInvNormsF16F16(va, vb, invA, invB)
+	case MetricDotProduct:
+		d := dotProductF16F16(va, vb)
+		if d == 0 {
+			return 0
+		}
+		return -d
+	default:
+		if scratch != nil {
+			if len(scratch.tmpVecA) < idx.dim {
+				scratch.tmpVecA = make([]float32, idx.dim)
+				scratch.tmpVecB = make([]float32, idx.dim)
+			}
+			decodeFloat16Slice(scratch.tmpVecA[:idx.dim], va)
+			decodeFloat16Slice(scratch.tmpVecB[:idx.dim], vb)
+			return idx.customDist(scratch.tmpVecA[:idx.dim], scratch.tmpVecB[:idx.dim])
+		}
+		fa := make([]float32, idx.dim)
+		fb := make([]float32, idx.dim)
+		decodeFloat16Slice(fa, va)
+		decodeFloat16Slice(fb, vb)
+		return idx.customDist(fa, fb)
+	}
+}
+
 func (idx *Index[K]) distQuery(id uint32, query []float32, qInvNorm float32) float32 {
 	chunk, slot := idx.getChunk(id)
 	return idx.distQueryAt(chunk, slot, query, qInvNorm)
@@ -317,6 +376,16 @@ func (idx *Index[K]) distQuery(id uint32, query []float32, qInvNorm float32) flo
 func (idx *Index[K]) distNodes(a, b uint32) float32 {
 	ca, sa := idx.getChunk(a)
 	cb, sb := idx.getChunk(b)
+	if idx.quant == QuantFloat16 {
+		va := idx.vectorF16At(ca, sa)
+		vb := idx.vectorF16At(cb, sb)
+		var invA, invB float32
+		if idx.metric == MetricCosine {
+			invA = ca.invNorms[sa]
+			invB = cb.invNorms[sb]
+		}
+		return idx.distVecsF16(va, invA, vb, invB, nil)
+	}
 	va := idx.vectorAt(ca, sa)
 	vb := idx.vectorAt(cb, sb)
 	var invA, invB float32
@@ -404,9 +473,13 @@ func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
 	chunk := page.chunks[l2].Load()
 	if chunk == nil {
 		chunk = &arenaChunk[K]{
-			vecs:     make([]float32, chunkSize*idx.dim),
 			intToExt: make([]K, chunkSize),
 			l0Edges:  make([]uint32, chunkSize*idx.mmax),
+		}
+		if idx.quant == QuantFloat16 {
+			chunk.vecsF16 = make([]uint16, chunkSize*idx.dim)
+		} else {
+			chunk.vecs = make([]float32, chunkSize*idx.dim)
 		}
 		if idx.metric == MetricCosine {
 			chunk.invNorms = make([]float32, chunkSize)
@@ -415,9 +488,17 @@ func (idx *Index[K]) allocSlot(extID K, vec []float32, lvl uint8) uint32 {
 	}
 
 	off := slot * idx.dim
-	copy(chunk.vecs[off:off+idx.dim], vec)
-	if idx.metric == MetricCosine {
-		chunk.invNorms[slot] = computeInvNorm(vec)
+	if idx.quant == QuantFloat16 {
+		dst := chunk.vecsF16[off : off+idx.dim]
+		encodeFloat16Slice(dst, vec)
+		if idx.metric == MetricCosine {
+			chunk.invNorms[slot] = computeInvNormF16(dst)
+		}
+	} else {
+		copy(chunk.vecs[off:off+idx.dim], vec)
+		if idx.metric == MetricCosine {
+			chunk.invNorms[slot] = computeInvNorm(vec)
+		}
 	}
 	chunk.intToExt[slot] = extID
 	chunk.maxLevels[slot] = lvl
@@ -577,6 +658,7 @@ func (idx *Index[K]) insertNode(newID uint32, vec []float32, newLevel int, scrat
 
 func (idx *Index[K]) greedyStep(currID uint32, currDist float32, query []float32, qInvNorm float32, lvl int, scratch *searchScratch, lockNode bool) (uint32, float32) {
 	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
+	isF16 := idx.quant == QuantFloat16
 	for {
 		improved := false
 		nbrs := idx.copyNeighbors(currID, lvl, scratch.neighbors, lockNode)
@@ -585,7 +667,11 @@ func (idx *Index[K]) greedyStep(currID uint32, currDist float32, query []float32
 			var d float32
 			if isL2 {
 				chunk, slot := idx.getChunk(nbrID)
-				d = l2Squared(idx.vectorAt(chunk, slot), query)
+				if isF16 {
+					d = l2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+				} else {
+					d = l2Squared(idx.vectorAt(chunk, slot), query)
+				}
 			} else {
 				d = idx.distQuery(nbrID, query, qInvNorm)
 			}
@@ -611,6 +697,7 @@ func (idx *Index[K]) searchLayerInsert(query []float32, qInvNorm float32, ep uin
 	}
 
 	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
+	isF16 := idx.quant == QuantFloat16
 	for len(scratch.candidates) > 0 {
 		curr := scratch.candidates.pop()
 		if len(scratch.results) >= ef && curr.dist > scratch.results[0].dist {
@@ -625,7 +712,11 @@ func (idx *Index[K]) searchLayerInsert(query []float32, qInvNorm float32, ep uin
 			chunk, slot := idx.getChunk(nbrID)
 			var d float32
 			if isL2 {
-				d = l2Squared(idx.vectorAt(chunk, slot), query)
+				if isF16 {
+					d = l2SquaredF16F32(idx.vectorF16At(chunk, slot), query)
+				} else {
+					d = l2Squared(idx.vectorAt(chunk, slot), query)
+				}
 			} else {
 				d = idx.distQueryAt(chunk, slot, query, qInvNorm)
 			}
@@ -683,13 +774,48 @@ func cmpDistNode(a, b distNode) int {
 func (idx *Index[K]) selectNeighborsFromIDs(baseID uint32, ids []uint32, maxConn int, scratch *searchScratch, out []uint32) []uint32 {
 	work := scratch.heuristicWork[:0]
 	baseChunk, baseSlot := idx.getChunk(baseID)
-	baseVec := idx.vectorAt(baseChunk, baseSlot)
 	var baseInvNorm float32
 	if idx.metric == MetricCosine {
 		baseInvNorm = baseChunk.invNorms[baseSlot]
 	}
 	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
 
+	if idx.quant == QuantFloat16 {
+		baseVec := idx.vectorF16At(baseChunk, baseSlot)
+		for _, cid := range ids {
+			if cid == baseID {
+				continue
+			}
+			cChunk, cSlot := idx.getChunk(cid)
+			if isDeletedAt(cChunk, cSlot) {
+				continue
+			}
+			dup := false
+			for _, existing := range work {
+				if existing.id == cid {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				var d float32
+				if isL2 {
+					d = l2SquaredF16F16(baseVec, idx.vectorF16At(cChunk, cSlot))
+				} else {
+					var cInvNorm float32
+					if idx.metric == MetricCosine {
+						cInvNorm = cChunk.invNorms[cSlot]
+					}
+					d = idx.distVecsF16(baseVec, baseInvNorm, idx.vectorF16At(cChunk, cSlot), cInvNorm, scratch)
+				}
+				work = append(work, distNode{id: cid, dist: d})
+			}
+		}
+		scratch.heuristicWork = work
+		return idx.selectNeighborsWork(work, maxConn, scratch, out)
+	}
+
+	baseVec := idx.vectorAt(baseChunk, baseSlot)
 	for _, cid := range ids {
 		if cid == baseID {
 			continue
@@ -742,13 +868,70 @@ func (idx *Index[K]) selectNeighborsWork(work []distNode, maxConn int, scratch *
 	}
 
 	selected := scratch.selected[:0]
-	selectedVecs := scratch.selectedVecs[:0]
 	selectedInvNorms := scratch.selectedInvNorms[:0]
 	discarded := scratch.discarded[:0]
 
 	isL2 := idx.metric == MetricEuclidean || idx.metric == MetricSquaredEuclidean
 	isCosine := idx.metric == MetricCosine
 
+	if idx.quant == QuantFloat16 {
+		selectedVecsF16 := scratch.selectedVecsF16[:0]
+		for _, e := range work {
+			if len(selected) >= maxConn {
+				break
+			}
+			eChunk, eSlot := idx.getChunk(e.id)
+			eVec := idx.vectorF16At(eChunk, eSlot)
+			var eInvNorm float32
+			if isCosine {
+				eInvNorm = eChunk.invNorms[eSlot]
+			}
+			good := true
+			if isL2 {
+				for _, sVec := range selectedVecsF16 {
+					if l2SquaredF16F16(eVec, sVec) < e.dist {
+						good = false
+						break
+					}
+				}
+			} else {
+				for i, sVec := range selectedVecsF16 {
+					var sInvNorm float32
+					if isCosine {
+						sInvNorm = selectedInvNorms[i]
+					}
+					if idx.distVecsF16(eVec, eInvNorm, sVec, sInvNorm, scratch) < e.dist {
+						good = false
+						break
+					}
+				}
+			}
+			if good {
+				selected = append(selected, e)
+				selectedVecsF16 = append(selectedVecsF16, eVec)
+				if isCosine {
+					selectedInvNorms = append(selectedInvNorms, eInvNorm)
+				}
+			} else {
+				discarded = append(discarded, e)
+			}
+		}
+
+		for i := 0; i < len(discarded) && len(selected) < maxConn; i++ {
+			selected = append(selected, discarded[i])
+		}
+		for _, s := range selected {
+			out = append(out, s.id)
+		}
+		clear(selectedVecsF16)
+		scratch.selected = selected
+		scratch.selectedVecsF16 = selectedVecsF16[:0]
+		scratch.selectedInvNorms = selectedInvNorms[:0]
+		scratch.discarded = discarded
+		return out
+	}
+
+	selectedVecs := scratch.selectedVecs[:0]
 	for _, e := range work {
 		if len(selected) >= maxConn {
 			break
@@ -1053,7 +1236,11 @@ func (idx *Index[K]) Get(id K) ([]float32, bool) {
 		return nil, false
 	}
 	out := make([]float32, idx.dim)
-	copy(out, idx.vectorAt(chunk, slot))
+	if idx.quant == QuantFloat16 {
+		decodeFloat16Slice(out, idx.vectorF16At(chunk, slot))
+	} else {
+		copy(out, idx.vectorAt(chunk, slot))
+	}
 	return out, true
 }
 
@@ -1198,9 +1385,13 @@ func (idx *Index[K]) Compact() error {
 		newChunk := page.chunks[l2].Load()
 		if newChunk == nil {
 			newChunk = &arenaChunk[K]{
-				vecs:     make([]float32, chunkSize*idx.dim),
 				intToExt: make([]K, chunkSize),
 				l0Edges:  make([]uint32, chunkSize*idx.mmax),
+			}
+			if idx.quant == QuantFloat16 {
+				newChunk.vecsF16 = make([]uint16, chunkSize*idx.dim)
+			} else {
+				newChunk.vecs = make([]float32, chunkSize*idx.dim)
 			}
 			if idx.metric == MetricCosine {
 				newChunk.invNorms = make([]float32, chunkSize)
@@ -1208,7 +1399,11 @@ func (idx *Index[K]) Compact() error {
 			page.chunks[l2].Store(newChunk)
 		}
 
-		copy(newChunk.vecs[newSlot*idx.dim:(newSlot+1)*idx.dim], idx.vectorAt(oldChunk, oldSlot))
+		if idx.quant == QuantFloat16 {
+			copy(newChunk.vecsF16[newSlot*idx.dim:(newSlot+1)*idx.dim], idx.vectorF16At(oldChunk, oldSlot))
+		} else {
+			copy(newChunk.vecs[newSlot*idx.dim:(newSlot+1)*idx.dim], idx.vectorAt(oldChunk, oldSlot))
+		}
 		if idx.metric == MetricCosine {
 			newChunk.invNorms[newSlot] = oldChunk.invNorms[oldSlot]
 		}
@@ -1310,7 +1505,11 @@ func (idx *Index[K]) Stats() IndexStats {
 	var memBytes int64
 	memBytes += int64(unsafe.Sizeof(*idx))
 	var keyZero K
-	perChunkBytes := int64(chunkSize*idx.dim*4) +
+	vecElemBytes := int64(4)
+	if idx.quant == QuantFloat16 {
+		vecElemBytes = 2
+	}
+	perChunkBytes := int64(chunkSize*idx.dim)*vecElemBytes +
 		int64(chunkSize)*int64(unsafe.Sizeof(keyZero)) +
 		int64(chunkSize*idx.mmax*4) +
 		int64(unsafe.Sizeof(arenaChunk[K]{}))
@@ -1342,6 +1541,7 @@ func (idx *Index[K]) Stats() IndexStats {
 		EfConstruction: idx.efConstruction,
 		EfSearch:       int(idx.efSearch.Load()),
 		Metric:         idx.metric,
+		Quantization:   idx.quant,
 		Heuristic:      idx.heuristic,
 		MemoryBytes:    memBytes,
 	}
